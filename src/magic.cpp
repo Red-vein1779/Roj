@@ -2,6 +2,7 @@
 
 #include "magic.h"
 #include "bitboard.h"
+#include "rng.h"
 
 #include <cstdint>
 
@@ -72,19 +73,16 @@ Bitboard index_to_occupancy(int index, Bitboard mask) {
     return occ;
 }
 
-// Tiny xorshift64* PRNG — our own generator, fixed seed for reproducibility.
-struct Rng {
-    std::uint64_t state;
-    explicit Rng(std::uint64_t seed) : state(seed) {}
-    std::uint64_t next() {
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        return state * 0x2545F4914F6CDD1DULL;
-    }
-    // ANDing three draws clears most bits; sparse candidates make better magics.
-    std::uint64_t sparse() { return next() & next() & next(); }
-};
+// Sparse candidate magic: ANDing three PRNG draws clears most bits, which makes
+// a usable magic far more likely. The PRNG itself now lives in rng.h (shared
+// with Zobrist key generation). The three draws are sequenced explicitly; since
+// AND is commutative this is identical to the previous next()&next()&next().
+Bitboard sparse_random(Rng& rng) {
+    const Bitboard a = rng.next();
+    const Bitboard b = rng.next();
+    const Bitboard c = rng.next();
+    return a & b & c;
+}
 
 // Search scratch, reused per square (init is single-threaded and sequential).
 Bitboard g_occ[1 << ROOK_INDEX_BITS];
@@ -108,7 +106,7 @@ Bitboard find_magic(Square s, Bitboard mask, bool rook,
     }
 
     for (;;) {
-        const Bitboard magic = rng.sparse();
+        const Bitboard magic = sparse_random(rng);
         // Quick reject: a usable magic spreads bits into the high byte.
         if (popcount((mask * magic) >> 56) < 6) continue;
 
