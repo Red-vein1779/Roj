@@ -132,6 +132,10 @@ enum CastlingRights : int {
     ANY_CASTLING = WHITE_OO | WHITE_OOO | BLACK_OO | BLACK_OOO
 };
 
+// Number of distinct 4-bit castling-right combinations (0..15), e.g. for sizing
+// the Zobrist castling-key table.
+constexpr int CASTLING_RIGHTS_NB = 16;
+
 // ----------------------------------------------------------------------------
 // Move encoding
 // ----------------------------------------------------------------------------

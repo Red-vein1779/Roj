@@ -12,6 +12,7 @@
 #include "types.h"
 #include "attacks.h"
 #include "magic.h"
+#include "zobrist.h"
 
 #include <iostream>
 #include <sstream>
@@ -73,10 +74,11 @@ int main() {
     // Unbuffered, line-by-line communication is what UCI GUIs expect; flushing
     // after each response (handled at the call sites via std::endl) keeps the
     // exchange responsive.
-    // Leaper attack tables and sliding-piece magics are computed once, before
-    // any command is handled.
+    // Attack tables, sliding-piece magics and Zobrist keys are computed once,
+    // before any command is handled.
     roj::init_attack_tables();
     roj::init_magics();
+    roj::init_zobrist();
 
     roj::uci_loop();
     return 0;

@@ -1,0 +1,49 @@
+// Roj chess engine — board representation and state.
+//
+// Position is the engine's board. Pieces are stored as bitboards (one per
+// colour x piece type). The composite occupancy boards (byColor, occupied) are
+// fully derivable from the piece boards but are cached because move generation
+// reads them constantly. A running Zobrist hash is kept up to date so the
+// transposition table and repetition detection can use it directly later.
+
+#ifndef ROJ_POSITION_H
+#define ROJ_POSITION_H
+
+#include "types.h"
+
+#include <cstdint>
+
+namespace roj {
+
+struct Position {
+    // One bitboard per (colour, piece type). Indexed by PieceType PAWN..KING;
+    // the [*][NO_PIECE_TYPE] slot is unused.
+    Bitboard pieces[COLOR_NB][PIECE_TYPE_NB];
+
+    // Cached composites (derived from `pieces`, kept for speed).
+    Bitboard byColor[COLOR_NB];   // all white pieces / all black pieces
+    Bitboard occupied;            // all pieces of either colour
+
+    Color          side_to_move;
+    CastlingRights castling_rights;
+    Square         ep_square;       // SQ_NONE when there is no en-passant target
+    int            halfmove_clock;  // plies since last capture or pawn move
+    int            fullmove_number; // starts at 1, increments after Black moves
+    std::uint64_t  hash;            // incremental Zobrist hash
+
+    // Reset to a completely empty board: White to move, no castling rights, no
+    // en-passant square, clocks at their start values, and the hash recomputed
+    // from scratch (which is 0 for this neutral empty position).
+    void clear_board();
+};
+
+// From-scratch Zobrist hash: XOR every present piece's key, the side key (if
+// Black to move), the castling-rights key, and the en-passant file key. This is
+// the independent oracle used to validate the incremental hash in perft
+// (step 13). It walks the whole board, so it must NOT be used in hot paths —
+// only in tests and assertions.
+std::uint64_t compute_hash_from_scratch(const Position& pos);
+
+} // namespace roj
+
+#endif // ROJ_POSITION_H
