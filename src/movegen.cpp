@@ -28,6 +28,15 @@ void add_moves(MoveList& list, Square from, Bitboard targets) {
         list.add(make_move(from, pop_lsb(targets)));
 }
 
+// Emit the four promotion moves (Q, R, B, N) for a pawn reaching the last rank;
+// capturing or quiet depending on `capture`.
+void add_promotions(MoveList& list, Square from, Square to, bool capture) {
+    list.add(make_move(from, to, promo_flag(QUEEN,  capture)));
+    list.add(make_move(from, to, promo_flag(ROOK,   capture)));
+    list.add(make_move(from, to, promo_flag(BISHOP, capture)));
+    list.add(make_move(from, to, promo_flag(KNIGHT, capture)));
+}
+
 } // namespace
 
 void generate_moves(const Position& pos, MoveList& list) {
@@ -38,9 +47,7 @@ void generate_moves(const Position& pos, MoveList& list) {
     const Bitboard occ   = pos.occupied;
     const Bitboard empty = ~occ;
 
-    // --- Pawns (NORMAL only) -------------------------------------------------
-    // Pushes and diagonal captures, but any move landing on the last rank is a
-    // PROMOTION and is skipped here (generated in step 11).
+    // --- Pawns (pushes, double push, captures, and promotions) ---------------
     const int      up         = (us == WHITE) ? 8 : -8;
     const Bitboard start_rank = (us == WHITE) ? RANK_2_BB : RANK_7_BB;
     const Bitboard last_rank  = (us == WHITE) ? RANK_8_BB : RANK_1_BB;
@@ -50,20 +57,41 @@ void generate_moves(const Position& pos, MoveList& list) {
         const Square from = pop_lsb(pawns);
         const Square one  = static_cast<Square>(from + up);
 
-        // Single push (if the square ahead is empty and not a promotion).
-        if (test_bit(empty, one) && !test_bit(last_rank, one)) {
-            list.add(make_move(from, one));
-
-            // Double push: only from the start rank, both squares ahead empty.
-            if (test_bit(start_rank, from)) {
-                const Square two = static_cast<Square>(from + 2 * up);
-                if (test_bit(empty, two))
-                    list.add(make_move(from, two, DOUBLE_PUSH));
+        // Forward push.
+        if (test_bit(empty, one)) {
+            if (test_bit(last_rank, one)) {
+                add_promotions(list, from, one, false);      // four quiet promotions
+            } else {
+                list.add(make_move(from, one));
+                if (test_bit(start_rank, from)) {            // double push
+                    const Square two = static_cast<Square>(from + 2 * up);
+                    if (test_bit(empty, two))
+                        list.add(make_move(from, two, DOUBLE_PUSH));
+                }
             }
         }
 
-        // Diagonal captures (excluding promotion captures, handled in step 11).
-        add_moves(list, from, PAWN_ATTACKS[us][from] & enemy & ~last_rank);
+        // Diagonal captures (a capture onto the last rank is a promotion capture).
+        Bitboard caps = PAWN_ATTACKS[us][from] & enemy;
+        while (caps) {
+            const Square to = pop_lsb(caps);
+            if (test_bit(last_rank, to))
+                add_promotions(list, from, to, true);        // four capture promotions
+            else
+                list.add(make_move(from, to));
+        }
+    }
+
+    // --- En passant (pseudo-legal) -------------------------------------------
+    // Own pawns able to capture onto ep_square are exactly those standing on the
+    // squares a `them` pawn placed on ep_square would attack. The rare "EP
+    // exposes the king along the rank" case is left to step 12 (make-then-test).
+    if (pos.ep_square != SQ_NONE) {
+        Bitboard ep_from = PAWN_ATTACKS[them][pos.ep_square] & pos.pieces[us][PAWN];
+        while (ep_from) {
+            const Square from = pop_lsb(ep_from);
+            list.add(make_move(from, pos.ep_square, EN_PASSANT));
+        }
     }
 
     // --- Knights -------------------------------------------------------------
@@ -87,11 +115,35 @@ void generate_moves(const Position& pos, MoveList& list) {
         add_moves(list, from, rook_attacks(from, occ) & ~own);
     }
 
-    // --- King (no castling here; step 11) ------------------------------------
+    // --- King ----------------------------------------------------------------
     Bitboard king = pos.pieces[us][KING];
     while (king) {
         const Square from = pop_lsb(king);
         add_moves(list, from, KING_ATTACKS[from] & ~own);
+    }
+
+    // --- Castling (PSEUDO-LEGAL) ---------------------------------------------
+    // Generated on (a) the right being present and (b) the squares between king
+    // and rook being EMPTY. The three attack checks — king not currently in
+    // check, the transit square not attacked, the destination not attacked —
+    // are deliberately NOT done here; they need is_attacked and belong to the
+    // legality filter (step 12), so castles out of / through check ARE generated.
+    // Note the queenside trap: the b-file square must be empty (the rook's path)
+    // but is never attack-checked, because the king never crosses it.
+    if (us == WHITE) {
+        if ((pos.castling_rights & WHITE_OO)
+            && test_bit(empty, SQ_F1) && test_bit(empty, SQ_G1))
+            list.add(make_move(SQ_E1, SQ_G1, CASTLING));
+        if ((pos.castling_rights & WHITE_OOO)
+            && test_bit(empty, SQ_B1) && test_bit(empty, SQ_C1) && test_bit(empty, SQ_D1))
+            list.add(make_move(SQ_E1, SQ_C1, CASTLING));
+    } else {
+        if ((pos.castling_rights & BLACK_OO)
+            && test_bit(empty, SQ_F8) && test_bit(empty, SQ_G8))
+            list.add(make_move(SQ_E8, SQ_G8, CASTLING));
+        if ((pos.castling_rights & BLACK_OOO)
+            && test_bit(empty, SQ_B8) && test_bit(empty, SQ_C8) && test_bit(empty, SQ_D8))
+            list.add(make_move(SQ_E8, SQ_C8, CASTLING));
     }
 }
 

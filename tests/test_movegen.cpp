@@ -133,6 +133,107 @@ int main() {
                   << "pawn e4 makes exactly 2 moves, both captures: got " << pawn_moves << "\n";
     }
 
+    // ===================== SPECIAL MOVES (step 11) =========================
+    std::cout << "\n=== 10. promotion ===\n";
+
+    // NOTE: the brief's FENs a/b put the black king on e8, which BLOCKS the
+    // e7-e8 push. We test the intended scenario with the king moved off e8, and
+    // keep the original (king on e8) as a "push blocked" case below.
+    std::cout << "-- quiet promotion (e8 empty): e7 -> e8 = Q/R/B/N (4) --\n";
+    {
+        Position p; parse_fen(p, "7k/4P3/8/8/8/8/8/4K3 w - - 0 1");
+        MoveList l; generate_moves(p, l);
+        int pn = 0; for (int i = 0; i < l.count; ++i) if (from_sq(l.moves[i]) == SQ_E7) ++pn;
+        const bool ok = pn == 4
+            && list_contains(l, make_move(SQ_E7, SQ_E8, promo_flag(QUEEN,  false)))
+            && list_contains(l, make_move(SQ_E7, SQ_E8, promo_flag(ROOK,   false)))
+            && list_contains(l, make_move(SQ_E7, SQ_E8, promo_flag(BISHOP, false)))
+            && list_contains(l, make_move(SQ_E7, SQ_E8, promo_flag(KNIGHT, false)));
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "4 quiet promotions, all flags present: got " << pn << " pawn moves\n";
+    }
+
+    std::cout << "-- promotion with capture (Nd8, e8 empty): e8=4 + exd8=4 = 8 --\n";
+    {
+        Position p; parse_fen(p, "3n3k/4P3/8/8/8/8/8/4K3 w - - 0 1");
+        MoveList l; generate_moves(p, l);
+        int pn = 0; for (int i = 0; i < l.count; ++i) if (from_sq(l.moves[i]) == SQ_E7) ++pn;
+        const bool ok = pn == 8
+            && list_contains(l, make_move(SQ_E7, SQ_E8, promo_flag(QUEEN,  false)))
+            && list_contains(l, make_move(SQ_E7, SQ_D8, promo_flag(QUEEN,  true)))
+            && list_contains(l, make_move(SQ_E7, SQ_D8, promo_flag(KNIGHT, true)));
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "8 promotions (4 push + 4 capture): got " << pn << " pawn moves\n";
+    }
+
+    std::cout << "-- push BLOCKED (brief's original FEN, Ke8 on the promotion square): 0 --\n";
+    {
+        Position p; parse_fen(p, "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+        MoveList l; generate_moves(p, l);
+        int pn = 0; for (int i = 0; i < l.count; ++i) if (from_sq(l.moves[i]) == SQ_E7) ++pn;
+        const bool ok = pn == 0;
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "e7 pawn has 0 moves (push blocked by Ke8, no captures): got " << pn << "\n";
+    }
+
+    std::cout << "\n=== 11. en passant ===\n";
+    {
+        Position p; parse_fen(p, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool ok = list_contains(l, make_move(SQ_E5, SQ_D6, EN_PASSANT))
+                     && list_contains(l, make_move(SQ_E5, SQ_E6, NORMAL));
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "ep set: e5xd6(EP) present and e5e6 push present\n";
+    }
+    {
+        Position p; parse_fen(p, "4k3/8/8/3pP3/8/8/8/4K3 w - - 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool ep = list_contains(l, make_move(SQ_E5, SQ_D6, EN_PASSANT));
+        if (ep) ++g_failures;
+        std::cout << (!ep ? "[PASS] " : "[FAIL] ") << "no ep: e5xd6(EP) NOT generated\n";
+    }
+
+    std::cout << "\n=== 12. castling (pseudo-legal) ===\n";
+    {
+        Position p; parse_fen(p, "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool ok = list_contains(l, make_move(SQ_E1, SQ_G1, CASTLING))
+                     && list_contains(l, make_move(SQ_E1, SQ_C1, CASTLING));
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "both empty: e1g1 AND e1c1 generated\n";
+    }
+    {
+        Position p; parse_fen(p, "r3k2r/8/8/8/8/8/8/R2BK2R w KQkq - 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool oo  = list_contains(l, make_move(SQ_E1, SQ_G1, CASTLING));
+        const bool ooo = list_contains(l, make_move(SQ_E1, SQ_C1, CASTLING));
+        const bool ok = oo && !ooo;
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "Bd1: e1g1 present, e1c1 absent (d1 occupied)\n";
+    }
+    {
+        // HEADLINE pseudo-legality: black re2 checks Ke1; castling generated anyway.
+        Position p; parse_fen(p, "r3k3/8/8/8/8/8/4r3/R3K2R w KQ - 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool oo  = list_contains(l, make_move(SQ_E1, SQ_G1, CASTLING));
+        const bool ooo = list_contains(l, make_move(SQ_E1, SQ_C1, CASTLING));
+        const bool ok = oo && ooo;
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ")
+                  << "HEADLINE: Ke1 in check, e1g1 AND e1c1 STILL generated (step 12 removes them): "
+                  << (ok ? "yes" : "NO") << "\n";
+    }
+    {
+        // Long-castle trap: b1 must be empty (rook's path).
+        Position p; parse_fen(p, "1r2k3/8/8/8/8/8/8/RN2K2R w KQ - 0 1");
+        MoveList l; generate_moves(p, l);
+        const bool oo  = list_contains(l, make_move(SQ_E1, SQ_G1, CASTLING));
+        const bool ooo = list_contains(l, make_move(SQ_E1, SQ_C1, CASTLING));
+        const bool ok = oo && !ooo;
+        if (!ok) ++g_failures;
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "Nb1: e1g1 present, e1c1 absent (b1 not empty)\n";
+    }
+
     std::cout << "\n"
               << (g_failures == 0 ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED")
               << " (failures: " << g_failures << ")\n";

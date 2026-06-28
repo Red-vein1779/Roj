@@ -5,8 +5,8 @@
 // legality filter's job (step 12). There is deliberately no pin logic and no
 // check-evasion logic in this file — filtering early would pull step 12 forward.
 //
-// Step 10 scope: NORMAL moves only. Castling, en passant and promotion are
-// step 11.
+// Scope: ALL pseudo-legal moves — normal moves (step 10) plus castling, en
+// passant and promotion (step 11).
 
 #ifndef ROJ_MOVEGEN_H
 #define ROJ_MOVEGEN_H
@@ -25,8 +25,9 @@ struct MoveList {
     void add(Move m) { moves[count++] = m; }
 };
 
-// Generate pseudo-legal NORMAL moves for pos.side_to_move (no castling / en
-// passant / promotion). See the file header for the pseudo-legal contract.
+// Generate ALL pseudo-legal moves for pos.side_to_move (normal moves plus
+// castling, en passant and promotion). See the file header for the pseudo-legal
+// contract (moves that leave the own king in check ARE included).
 void generate_moves(const Position& pos, MoveList& list);
 
 } // namespace roj
