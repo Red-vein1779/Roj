@@ -10,6 +10,8 @@
 #define ROJ_POSITION_H
 
 #include "types.h"
+#include "bitboard.h"
+#include "zobrist.h"
 
 #include <cstdint>
 
@@ -36,6 +38,23 @@ struct Position {
     // from scratch (which is 0 for this neutral empty position).
     void clear_board();
 };
+
+// Building blocks for make/unmake (step 9): place or remove a single piece on a
+// square, keeping the piece bitboard, the byColor/occupied composites AND the
+// incremental Zobrist hash consistent. XOR is its own inverse, so both helpers
+// XOR the same piece key (set XORs it in, remove XORs it out).
+inline void set_piece(Position& pos, Color c, PieceType pt, Square s) {
+    set_bit(pos.pieces[c][pt], s);
+    set_bit(pos.byColor[c], s);
+    set_bit(pos.occupied, s);
+    pos.hash ^= ZOBRIST_PIECE[make_piece(c, pt)][s];
+}
+inline void remove_piece(Position& pos, Color c, PieceType pt, Square s) {
+    clear_bit(pos.pieces[c][pt], s);
+    clear_bit(pos.byColor[c], s);
+    clear_bit(pos.occupied, s);
+    pos.hash ^= ZOBRIST_PIECE[make_piece(c, pt)][s];
+}
 
 // From-scratch Zobrist hash: XOR every present piece's key, the side key (if
 // Black to move), the castling-rights key, and the en-passant file key. This is
