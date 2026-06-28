@@ -5,6 +5,8 @@
 #include "attacks.h"
 #include "magic.h"
 
+#include <string>
+
 namespace roj {
 
 namespace {
@@ -187,6 +189,23 @@ void generate_legal_moves(Position& pos, MoveList& list) {
                 list.add(m);
         }
     }
+}
+
+std::string move_to_uci(Move m) {
+    const Square from = from_sq(m);
+    const Square to   = to_sq(m);
+
+    std::string s;
+    s += static_cast<char>('a' + file_of(from));
+    s += static_cast<char>('1' + rank_of(from));
+    s += static_cast<char>('a' + file_of(to));
+    s += static_cast<char>('1' + rank_of(to));
+
+    if (is_promotion(m)) {
+        static const char letters[PIECE_TYPE_NB] = {'?', 'p', 'n', 'b', 'r', 'q', 'k'};
+        s += letters[promotion_type(m)];
+    }
+    return s;
 }
 
 } // namespace roj

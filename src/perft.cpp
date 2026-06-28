@@ -9,28 +9,7 @@
 
 namespace roj {
 
-namespace {
-
-// Long-algebraic / UCI move string: from-square, to-square, and a lowercase
-// promotion letter for promotions (e.g. "e2e4", "e7e8q").
-std::string move_to_uci(Move m) {
-    const Square from = from_sq(m);
-    const Square to   = to_sq(m);
-
-    std::string s;
-    s += static_cast<char>('a' + file_of(from));
-    s += static_cast<char>('1' + rank_of(from));
-    s += static_cast<char>('a' + file_of(to));
-    s += static_cast<char>('1' + rank_of(to));
-
-    if (is_promotion(m)) {
-        static const char letters[PIECE_TYPE_NB] = {'?', 'p', 'n', 'b', 'r', 'q', 'k'};
-        s += letters[promotion_type(m)];
-    }
-    return s;
-}
-
-} // namespace
+// move_to_uci now lives in movegen.cpp (shared with the UCI loop).
 
 std::uint64_t perft(Position& pos, int depth, bool verify_hash) {
     // DoD item 2: the incremental hash must equal the from-scratch oracle at

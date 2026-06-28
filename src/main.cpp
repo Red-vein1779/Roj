@@ -1,18 +1,17 @@
 // Roj chess engine — program entry point and UCI command loop.
 //
-// Phase 1 scaffold: this is a *basic* UCI loop. It answers the protocol
-// handshake (uci / isready / ucinewgame / quit) so that any chess GUI or
-// Lichess bot bridge can connect to the engine. The "position" and "go"
-// handlers are intentionally stubs marked with TODO — board representation,
-// move generation and search arrive as those Phase 1 / Phase 2 components are
-// implemented. Nothing here pretends to play chess yet.
-//
-// Platform-independent C++17 only — no OS-specific APIs.
+// Phase 1, step 15: the UCI loop now plays LEGAL (not good) chess. It holds one
+// Position, rebuilds it from "position [startpos|fen ...] [moves ...]", and
+// answers "go" with the first legal move. Real search is Phase 2. "d" prints the
+// board + FEN for hand-verification. Platform-independent C++17 only.
 
 #include "types.h"
 #include "attacks.h"
 #include "magic.h"
 #include "zobrist.h"
+#include "position.h"
+#include "movegen.h"
+#include "fen.h"
 
 #include <iostream>
 #include <sstream>
@@ -20,31 +19,115 @@
 
 namespace roj {
 
-// Respond to the "uci" handshake: identify the engine and report that all
-// option parsing is finished. Real engine options will be added here later.
 void uci_identify() {
     std::cout << "id name " << ENGINE_NAME << ' ' << ENGINE_VERSION << '\n'
               << "id author " << ENGINE_AUTHOR << '\n'
               << "uciok" << std::endl;
 }
 
-// TODO (Phase 1): set up the board from "startpos" or a FEN, then apply the
-// optional list of moves. Requires the Position type, FEN parsing and
-// make/unmake, which are not built yet.
-void uci_position(std::istringstream& /*args*/) {
-    // Intentionally empty until the board representation exists.
+// Does a generated legal move match a UCI move string (e2e4 / e7e8q)? We match
+// the from/to squares and, when the string carries a promotion letter, the
+// promoted piece. The move's own flag stays authoritative, so castling (e1g1),
+// en passant and promotion need no special string parsing.
+bool uci_matches(Move m, const std::string& s) {
+    if (s.size() < 4) return false;
+    if (s[0] < 'a' || s[0] > 'h' || s[1] < '1' || s[1] > '8' ||
+        s[2] < 'a' || s[2] > 'h' || s[3] < '1' || s[3] > '8')
+        return false;
+
+    const Square from = make_square(static_cast<File>(s[0] - 'a'), static_cast<Rank>(s[1] - '1'));
+    const Square to   = make_square(static_cast<File>(s[2] - 'a'), static_cast<Rank>(s[3] - '1'));
+    if (from_sq(m) != from || to_sq(m) != to)
+        return false;
+
+    if (s.size() >= 5) {                        // promotion: the piece must match
+        if (!is_promotion(m)) return false;
+        char got = '?';
+        switch (promotion_type(m)) {
+            case KNIGHT: got = 'n'; break;
+            case BISHOP: got = 'b'; break;
+            case ROOK:   got = 'r'; break;
+            case QUEEN:  got = 'q'; break;
+            default: break;
+        }
+        return got == s[4];
+    }
+    return !is_promotion(m);                     // 4-char string: the non-promotion move
 }
 
-// TODO (Phase 2): launch the search and report the best move. For now we reply
-// with the UCI "none" move so a connected GUI does not hang waiting on "go".
-void uci_go(std::istringstream& /*args*/) {
-    std::cout << "bestmove 0000" << std::endl;
+// "position [startpos | fen <6 fields>] [moves m1 m2 ...]". Rebuilt FRESH each
+// time (GUIs resend the whole game): set the base, then replay moves through the
+// legal generator so every flag is correct. Unknown/illegal input is ignored.
+void uci_position(Position& pos, std::istringstream& iss) {
+    std::string token;
+    if (!(iss >> token)) return;
+
+    if (token == "startpos") {
+        parse_fen(pos, START_FEN);
+    } else if (token == "fen") {
+        std::string fen, field;
+        for (int i = 0; i < 6 && (iss >> field); ++i)
+            fen += (i == 0 ? "" : " ") + field;
+        if (!parse_fen(pos, fen)) return;
+    } else {
+        return;  // malformed
+    }
+
+    if (iss >> token && token == "moves") {
+        std::string mv;
+        while (iss >> mv) {
+            MoveList list;
+            generate_legal_moves(pos, list);
+            bool applied = false;
+            for (int i = 0; i < list.count; ++i)
+                if (uci_matches(list.moves[i], mv)) {
+                    make_move(pos, list.moves[i]);
+                    applied = true;
+                    break;
+                }
+            if (!applied) break;   // unknown/illegal move: stop replaying
+        }
+    }
 }
 
-// The main UCI loop. It reads one command per line from standard input and
-// dispatches on the first token. Unknown commands are ignored, as the UCI
-// specification requires.
+// "go": play the FIRST legal move (deterministic; real search is Phase 2). Any
+// arguments are ignored. No legal moves (mate/stalemate) -> "bestmove 0000".
+void uci_go(Position& pos) {
+    MoveList list;
+    generate_legal_moves(pos, list);
+    if (list.count == 0) {
+        std::cout << "bestmove 0000" << std::endl;
+        return;
+    }
+    std::cout << "bestmove " << move_to_uci(list.moves[0]) << std::endl;
+}
+
+// "d": piece grid (rank 8 on top, a-file left) + FEN, to eyeball a position.
+void print_board(const Position& pos) {
+    static const char LETTER[PIECE_TYPE_NB] = {'.', 'P', 'N', 'B', 'R', 'Q', 'K'};
+    std::cout << '\n';
+    for (int r = 7; r >= 0; --r) {
+        std::cout << (r + 1) << "  ";
+        for (int f = 0; f < 8; ++f) {
+            const Square s = make_square(static_cast<File>(f), static_cast<Rank>(r));
+            const PieceType pt = piece_type_on(pos, s);
+            char c = '.';
+            if (pt != NO_PIECE_TYPE)
+                c = test_bit(pos.byColor[WHITE], s)
+                        ? LETTER[pt]
+                        : static_cast<char>(LETTER[pt] + 32);  // +32: to lowercase (black)
+            std::cout << c << ' ';
+        }
+        std::cout << '\n';
+    }
+    std::cout << "\n   a b c d e f g h\n";
+}
+
+// Read one command per line and dispatch on the first token.
 void uci_loop() {
+    Position pos;
+    parse_fen(pos, START_FEN);   // a sensible default before any "position"
+
     std::string line;
     while (std::getline(std::cin, line)) {
         std::istringstream iss(line);
@@ -56,24 +139,24 @@ void uci_loop() {
         } else if (token == "isready") {
             std::cout << "readyok" << std::endl;
         } else if (token == "ucinewgame") {
-            // TODO (Phase 2): clear the transposition table and search state.
+            parse_fen(pos, START_FEN);
         } else if (token == "position") {
-            uci_position(iss);
+            uci_position(pos, iss);
         } else if (token == "go") {
-            uci_go(iss);
-        } else if (token == "quit" || token == "stop") {
+            uci_go(pos);
+        } else if (token == "d") {
+            print_board(pos);
+            std::cout << "FEN: " << fen_string(pos) << std::endl;
+        } else if (token == "quit") {
             break;
         }
-        // Any other input is silently ignored per the UCI protocol.
+        // "stop" and any unknown command are ignored (there is no search to stop).
     }
 }
 
 } // namespace roj
 
 int main() {
-    // Unbuffered, line-by-line communication is what UCI GUIs expect; flushing
-    // after each response (handled at the call sites via std::endl) keeps the
-    // exchange responsive.
     // Attack tables, sliding-piece magics and Zobrist keys are computed once,
     // before any command is handled.
     roj::init_attack_tables();

@@ -14,6 +14,8 @@
 #include "types.h"
 #include "position.h"
 
+#include <string>
+
 namespace roj {
 
 // Fixed-capacity move list — no heap allocation in the hot path. 256 comfortably
@@ -37,6 +39,10 @@ void generate_moves(const Position& pos, MoveList& list);
 // filtering (make/unmake) but restored exactly. Kept separate so the pseudo-legal
 // generator stays intact for perft debugging.
 void generate_legal_moves(Position& pos, MoveList& list);
+
+// Long-algebraic / UCI move string (e2e4, e7e8q). Shared by perft_divide and the
+// UCI loop so the formatting lives in exactly one place.
+std::string move_to_uci(Move m);
 
 } // namespace roj
 
