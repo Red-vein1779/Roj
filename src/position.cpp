@@ -3,6 +3,8 @@
 #include "position.h"
 #include "zobrist.h"
 #include "bitboard.h"
+#include "attacks.h"
+#include "magic.h"
 
 namespace roj {
 
@@ -53,6 +55,32 @@ void Position::clear_board() {
     // Recompute from scratch: empty board + White to move + no rights + no EP,
     // which evaluates to 0.
     hash = compute_hash_from_scratch(*this);
+}
+
+bool is_attacked(Square sq, Color by, const Position& pos) {
+    // 1) Pawns. A pawn of colour `by` attacks `sq` iff one stands on a square it
+    //    could capture from. Those squares are exactly the ones the OPPOSITE
+    //    colour's pawn placed on `sq` would attack — hence PAWN_ATTACKS[~by].
+    if (PAWN_ATTACKS[~by][sq] & pos.pieces[by][PAWN])
+        return true;
+
+    // 2) Knights.
+    if (KNIGHT_ATTACKS[sq] & pos.pieces[by][KNIGHT])
+        return true;
+
+    // 3) Bishops and queens, along diagonals (occupancy-aware via magics).
+    if (bishop_attacks(sq, pos.occupied) & (pos.pieces[by][BISHOP] | pos.pieces[by][QUEEN]))
+        return true;
+
+    // 4) Rooks and queens, along ranks/files (occupancy-aware via magics).
+    if (rook_attacks(sq, pos.occupied) & (pos.pieces[by][ROOK] | pos.pieces[by][QUEEN]))
+        return true;
+
+    // 5) King.
+    if (KING_ATTACKS[sq] & pos.pieces[by][KING])
+        return true;
+
+    return false;
 }
 
 } // namespace roj

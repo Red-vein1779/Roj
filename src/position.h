@@ -63,6 +63,12 @@ inline void remove_piece(Position& pos, Color c, PieceType pt, Square s) {
 // only in tests and assertions.
 std::uint64_t compute_hash_from_scratch(const Position& pos);
 
+// True iff square `sq` is attacked by any piece of colour `by`, given the
+// occupancy in `pos`. This is the foundation of check detection, castling
+// legality and the make-then-test legality filter. It is evaluated one piece
+// type at a time, reusing the leaper tables and the magic sliding-attack lookups.
+bool is_attacked(Square sq, Color by, const Position& pos);
+
 } // namespace roj
 
 #endif // ROJ_POSITION_H
