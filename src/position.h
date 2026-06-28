@@ -14,8 +14,19 @@
 #include "zobrist.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace roj {
+
+// Saved per move so unmake_move can restore what a move destroyed and what
+// cannot be recomputed from the resulting position.
+struct StateInfo {
+    Piece          captured_piece;        // NO_PIECE if the move was not a capture
+    CastlingRights prev_castling_rights;
+    Square         prev_ep_square;
+    int            prev_halfmove_clock;
+    std::uint64_t  prev_hash;
+};
 
 struct Position {
     // One bitboard per (colour, piece type). Indexed by PieceType PAWN..KING;
@@ -32,6 +43,9 @@ struct Position {
     int            halfmove_clock;  // plies since last capture or pawn move
     int            fullmove_number; // starts at 1, increments after Black moves
     std::uint64_t  hash;            // incremental Zobrist hash
+
+    // History stack: make_move pushes one StateInfo, unmake_move pops it.
+    std::vector<StateInfo> history;
 
     // Reset to a completely empty board: White to move, no castling rights, no
     // en-passant square, clocks at their start values, and the hash recomputed
@@ -56,6 +70,14 @@ inline void remove_piece(Position& pos, Color c, PieceType pt, Square s) {
     pos.hash ^= ZOBRIST_PIECE[make_piece(c, pt)][s];
 }
 
+// The piece type on square s (NO_PIECE_TYPE if empty), regardless of colour.
+inline PieceType piece_type_on(const Position& pos, Square s) {
+    for (int pt = PAWN; pt <= KING; ++pt)
+        if (test_bit(pos.pieces[WHITE][pt] | pos.pieces[BLACK][pt], s))
+            return static_cast<PieceType>(pt);
+    return NO_PIECE_TYPE;
+}
+
 // From-scratch Zobrist hash: XOR every present piece's key, the side key (if
 // Black to move), the castling-rights key, and the en-passant file key. This is
 // the independent oracle used to validate the incremental hash in perft
@@ -68,6 +90,13 @@ std::uint64_t compute_hash_from_scratch(const Position& pos);
 // legality and the make-then-test legality filter. It is evaluated one piece
 // type at a time, reusing the leaper tables and the magic sliding-attack lookups.
 bool is_attacked(Square sq, Color by, const Position& pos);
+
+// Apply / undo a (pseudo-legal) move, maintaining the bitboards, caches, the
+// incremental hash and the history stack. unmake_move restores the position bit
+// for bit (it resets the hash directly from the saved StateInfo, which avoids
+// any XOR double-counting).
+void make_move(Position& pos, Move m);
+void unmake_move(Position& pos, Move m);
 
 } // namespace roj
 
