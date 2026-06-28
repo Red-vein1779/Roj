@@ -142,55 +142,68 @@ constexpr int CASTLING_RIGHTS_NB = 16;
 // A move is packed into 16 bits, which keeps move lists and the transposition
 // table compact:
 //
-//   bits  0- 5 : origin square      (0..63)
-//   bits  6-11 : destination square (0..63)
-//   bits 12-13 : promotion piece    (0=KNIGHT, 1=BISHOP, 2=ROOK, 3=QUEEN)
-//   bits 14-15 : move type flag      (see MoveType)
+//   bits  0- 5 : from square (0..63)
+//   bits  6-11 : to square   (0..63)
+//   bits 12-15 : 4-bit flag  (see MoveType)
 //
-// Only promotion moves use the promotion field. Castling is encoded as the king
-// moving from its origin to its destination square, with the CASTLING flag set.
+// The 4-bit flag names every special kind of move and, for promotions, encodes
+// both the promoted piece AND whether the promotion is also a capture:
+//
+//   flag bit 3 (value 8) set => promotion
+//   flag bit 2 (value 4) set => capture       (only distinguished for promotions)
+//   flag bits 1-0            => promoted piece (0=N,1=B,2=R,3=Q) when promoting
+//
+// A normal quiet move and a normal capture share the NORMAL flag; for
+// non-promotions, whether a move captures is read from the board, not the move.
+// Castling is the king's two-square move (e1g1 / e1c1 / ...) with the CASTLING
+// flag; the side is implied by the destination file.
 enum MoveType : int {
-    NORMAL     = 0,
-    PROMOTION  = 1 << 14,
-    EN_PASSANT = 2 << 14,
-    CASTLING   = 3 << 14
+    NORMAL           = 0,
+    DOUBLE_PUSH      = 1,   // make/unmake sets the en-passant square
+    CASTLING         = 2,   // king's two-square move; side implied by `to`
+    EN_PASSANT       = 3,   // make/unmake clears the captured pawn's square
+    PROMO_KNIGHT     = 8,
+    PROMO_BISHOP     = 9,
+    PROMO_ROOK       = 10,
+    PROMO_QUEEN      = 11,
+    PROMO_KNIGHT_CAP = 12,
+    PROMO_BISHOP_CAP = 13,
+    PROMO_ROOK_CAP   = 14,
+    PROMO_QUEEN_CAP  = 15
 };
 
-// We use a plain 16-bit integer as the move type rather than a class wrapper so
-// it stays trivially copyable and cheap to pass around in hot loops.
+// A plain 16-bit integer (not a class wrapper) so moves stay trivially copyable
+// and cheap to pass around in hot loops.
 using Move = std::uint16_t;
 
-constexpr Move MOVE_NONE = 0;  // a1->a1 with no flags: an impossible real move
-constexpr Move MOVE_NULL = 65; // b1->b1: reserved sentinel for the null move
+// Two reserved sentinels, both with from == to (which no legal move ever has).
+// SQ_NONE (64) does not fit the 6-bit square fields, so the canonical
+// "from equals to" trick marks a non-move / null move instead.
+constexpr Move MOVE_NONE = 0;   // a1->a1 : "no move"
+constexpr Move NULL_MOVE = 65;  // b1->b1 : the null move (side to move passes)
 
-// Build a normal (non-special) move from origin to destination.
-constexpr Move make_move(Square from, Square to) {
-    return static_cast<Move>((to << 6) | from);
+// Build a move. The default flag covers normal quiet and capture moves; pass a
+// specific flag for special moves (DOUBLE_PUSH, CASTLING, EN_PASSANT, or one of
+// the promotion flags).
+constexpr Move make_move(Square from, Square to, MoveType flag = NORMAL) {
+    return static_cast<Move>((flag << 12) | (to << 6) | from);
 }
 
-// Build a special move (promotion / en passant / castling). For promotions the
-// promoted piece type is supplied; it is ignored for the other move types.
-constexpr Move make_move(Square from, Square to, MoveType type,
-                         PieceType promotion = KNIGHT) {
-    return static_cast<Move>(type | ((promotion - KNIGHT) << 12) |
-                             (to << 6) | from);
+// Convenience: the promotion flag for a promoted piece, capturing or not.
+constexpr MoveType promo_flag(PieceType promoted, bool capture) {
+    return static_cast<MoveType>(8 | (capture ? 4 : 0) | (promoted - KNIGHT));
 }
 
-constexpr Square from_sq(Move m) {
-    return static_cast<Square>(m & 0x3F);
-}
+constexpr Square from_sq(Move m) { return static_cast<Square>(m & 0x3F); }
+constexpr Square to_sq(Move m)   { return static_cast<Square>((m >> 6) & 0x3F); }
+constexpr MoveType move_type(Move m) { return static_cast<MoveType>((m >> 12) & 0xF); }
 
-constexpr Square to_sq(Move m) {
-    return static_cast<Square>((m >> 6) & 0x3F);
-}
+// True for any of the eight promotion flags.
+constexpr bool is_promotion(Move m) { return ((m >> 12) & 0x8) != 0; }
 
-constexpr MoveType type_of(Move m) {
-    return static_cast<MoveType>(m & (3 << 14));
-}
-
-// Valid only when type_of(m) == PROMOTION.
+// The promoted piece. Valid only when is_promotion(m).
 constexpr PieceType promotion_type(Move m) {
-    return static_cast<PieceType>(((m >> 12) & 3) + KNIGHT);
+    return static_cast<PieceType>(KNIGHT + ((m >> 12) & 0x3));
 }
 
 // ----------------------------------------------------------------------------
