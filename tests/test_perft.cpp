@@ -1,9 +1,15 @@
-// Roj chess engine — Phase 1, step 13 verification: perft TOOL correctness.
+// Roj chess engine — Phase 1, step 14: THE PERFT GATE (non-negotiable gate to Phase 2).
 //
-// This checks the tool runs and divide works, using only the two positions whose
-// values we independently verified earlier in this project (start, Kiwipete).
-// It is NOT the gate — the gate (step 14) pulls all six positions' values live.
-// The hash invariant is ON (verify_hash = true) for every run here.
+// Six standard positions, two passes:
+//   PASS 1 — hash invariant ON (verify_hash=true), depths 1-4, all six: proves
+//            DoD requirement 2 (pos.hash == compute_hash_from_scratch at every
+//            node) across the whole suite. Completing without the assertion
+//            firing == the invariant held on every node of every position.
+//   PASS 2 — headline depths, hash invariant OFF for speed (already proven by
+//            Pass 1 and the step-13 tripwire): the counts ARE the gate.
+//
+// Node counts are the published Chess Programming Wiki values (cross-checked live
+// against the wiki). They are the source of truth — never adjusted to the engine.
 //
 // Build:
 //   g++ -O3 -std=c++17 -Wall -Wextra -Wpedantic tests/test_perft.cpp src/perft.cpp src/movegen.cpp src/position.cpp src/fen.cpp src/attacks.cpp src/magic.cpp src/zobrist.cpp -o test_perft
@@ -16,6 +22,7 @@
 #include "../src/zobrist.h"
 #include "../src/types.h"
 
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 
@@ -23,14 +30,35 @@ using namespace roj;
 
 static int g_failures = 0;
 
-static void check_perft(const char* fen, int depth, std::uint64_t expected) {
-    Position p;
-    parse_fen(p, fen);
-    const std::uint64_t got = perft(p, depth, /*verify_hash=*/true);
-    const bool ok = (got == expected);
+struct PerftPos {
+    const char*   name;
+    const char*   fen;
+    int           target_depth;
+    std::uint64_t expected[7];   // indexed by depth 1..6 (index 0 unused)
+};
+
+static const PerftPos POSITIONS[6] = {
+    {"P1 Start",    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+     6, {0, 20, 400, 8902, 197281, 4865609, 119060324}},
+    {"P2 Kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+     5, {0, 48, 2039, 97862, 4085603, 193690690}},
+    {"P3",          "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+     6, {0, 14, 191, 2812, 43238, 674624, 11030083}},
+    {"P4",          "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+     5, {0, 6, 264, 9467, 422333, 15833292}},
+    {"P5",          "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+     5, {0, 44, 1486, 62379, 2103487, 89941194}},
+    {"P6",          "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+     5, {0, 46, 2079, 89890, 3894594, 164075551}},
+};
+
+static void run_depth(Position& p, const PerftPos& P, int depth, bool verify) {
+    const std::uint64_t got = perft(p, depth, verify);
+    const bool ok = (got == P.expected[depth]);
     if (!ok) ++g_failures;
-    std::cout << (ok ? "[PASS] " : "[FAIL] ") << "perft(" << depth << ") = " << got
-              << " (expected " << expected << ")\n";
+    std::cout << "    d" << depth << " = " << got
+              << "  (expected " << P.expected[depth] << ")  "
+              << (ok ? "PASS" : "FAIL") << "\n";
 }
 
 int main() {
@@ -38,27 +66,37 @@ int main() {
     init_magics();
     init_zobrist();
 
-    const char* START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    const char* KIWI  = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    std::cout << "########## PASS 1 — hash invariant ON, depths 1-4, all six ##########\n";
+    for (const PerftPos& P : POSITIONS) {
+        std::cout << "-- " << P.name << " --\n";
+        Position p;
+        parse_fen(p, P.fen);
+        for (int d = 1; d <= 4; ++d)
+            run_depth(p, P, d, /*verify=*/true);
+    }
+    std::cout << "[Pass 1 completed without the hash-invariant assertion firing on any node.]\n";
 
-    std::cout << "=== start position, perft to depth 5 (hash invariant ON) ===\n";
-    check_perft(START, 1, 20);
-    check_perft(START, 2, 400);
-    check_perft(START, 3, 8902);
-    check_perft(START, 4, 197281);
-    check_perft(START, 5, 4865609);
+    std::cout << "\n########## PASS 2 — headline depths, hash invariant OFF (timed) ##########\n";
+    for (const PerftPos& P : POSITIONS) {
+        std::cout << "-- " << P.name << " (target depth " << P.target_depth << ") --\n";
+        Position p;
+        parse_fen(p, P.fen);
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int d = 1; d <= P.target_depth; ++d)
+            run_depth(p, P, d, /*verify=*/false);
+        const auto t1 = std::chrono::steady_clock::now();
+        const long long ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+        std::cout << "    [" << P.name << " elapsed: " << ms << " ms]\n";
+    }
 
-    std::cout << "\n=== Kiwipete, perft to depth 4 (hash invariant ON) ===\n";
-    check_perft(KIWI, 1, 48);
-    check_perft(KIWI, 2, 2039);
-    check_perft(KIWI, 3, 97862);
-    check_perft(KIWI, 4, 4085603);
+    std::cout << "\n########## divide demo: start position, depth 2 ##########\n";
+    { Position p; parse_fen(p, POSITIONS[0].fen); perft_divide(p, 2, /*verify=*/false); }
 
-    std::cout << "\n=== divide: start position depth 2 (each root move -> 20, total 400) ===\n";
-    { Position p; parse_fen(p, START); perft_divide(p, 2, /*verify_hash=*/true); }
-
-    std::cout << "\n"
-              << (g_failures == 0 ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED")
-              << " (failures: " << g_failures << ")\n";
+    std::cout << "\n";
+    if (g_failures == 0)
+        std::cout << "ALL SIX POSITIONS MATCH — PERFT GATE: PASS\n";
+    else
+        std::cout << "SOME COUNTS WRONG — PERFT GATE: FAIL (failures: " << g_failures << ")\n";
     return g_failures == 0 ? 0 : 1;
 }
