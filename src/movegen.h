@@ -30,6 +30,14 @@ struct MoveList {
 // contract (moves that leave the own king in check ARE included).
 void generate_moves(const Position& pos, MoveList& list);
 
+// Generate the LEGAL moves for pos.side_to_move. It filters generate_moves():
+// non-castling moves by make-then-test (the mover's king must not be attacked in
+// the resulting position), and castling by an explicit pre-move predicate
+// (king_from / transit / destination all unattacked). `pos` is mutated during
+// filtering (make/unmake) but restored exactly. Kept separate so the pseudo-legal
+// generator stays intact for perft debugging.
+void generate_legal_moves(Position& pos, MoveList& list);
+
 } // namespace roj
 
 #endif // ROJ_MOVEGEN_H

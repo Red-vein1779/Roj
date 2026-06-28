@@ -147,4 +147,46 @@ void generate_moves(const Position& pos, MoveList& list) {
     }
 }
 
+void generate_legal_moves(Position& pos, MoveList& list) {
+    MoveList pseudo;
+    generate_moves(pos, pseudo);
+
+    // The attacker for castling checks is the opponent in the CURRENT position.
+    // pos stays in this current state throughout the loop: every make_move below
+    // is matched by an unmake_move, and castling moves don't touch pos at all.
+    const Color them = ~pos.side_to_move;
+
+    for (int i = 0; i < pseudo.count; ++i) {
+        const Move m = pseudo.moves[i];
+
+        if (move_type(m) == CASTLING) {
+            // PART 2 — castling predicate (make-then-test cannot see the transit
+            // square, which is empty in the FINAL position). Evaluated in the
+            // current position: king_from, the transit square (midpoint of the
+            // king's two-square move) and the destination must all be unattacked.
+            // The b-file square is deliberately NOT checked — the king never
+            // crosses it, only the rook does, and rooks may pass attacked squares.
+            const Square kfrom   = from_sq(m);
+            const Square kto     = to_sq(m);
+            const Square transit = static_cast<Square>((kfrom + kto) / 2);
+            if (!is_attacked(kfrom,   them, pos)
+                && !is_attacked(transit, them, pos)
+                && !is_attacked(kto,     them, pos))
+                list.add(m);
+        } else {
+            // PART 1 — general make-then-test. After make_move the side has
+            // flipped, so the mover's king is pos.pieces[~side_to_move][KING] and
+            // the would-be attacker is the new side_to_move. This one mechanism
+            // covers pins, double check, the king fleeing along a ray, and the
+            // en-passant discovered check (make_move clears both pawns first).
+            make_move(pos, m);
+            const Square ksq = lsb(pos.pieces[~pos.side_to_move][KING]);
+            const bool illegal = is_attacked(ksq, pos.side_to_move, pos);
+            unmake_move(pos, m);
+            if (!illegal)
+                list.add(m);
+        }
+    }
+}
+
 } // namespace roj
