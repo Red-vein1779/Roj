@@ -1,9 +1,12 @@
 # Roj — Fas 1: Grunden
 
-**Status: LÅST.** Detta är den slutgiltiga kartan för Fas 1. Den ändras bara
-om en konkret lucka identifieras — och i så fall uppdateras dokumentet *innan*
-implementationen fortsätter. Kartan är kompassen: varje steg har ett
-"klart när"-kriterium, och hela fasen är underordnad en enda port — **perft**.
+**Status: KOMPLETT (LÅST).** Fas 1 är klar — samtliga Definition of Done-punkter
+(§8) är uppfyllda, inklusive en ren ASan+UBSan-körning på Linux (alla sex
+ställningar PASS, exit 0, noll diagnostik, tripwires bekräftat aktiva). Kartan
+nedan bevaras som det slutgiltiga kontraktet; den ändras bara om en konkret lucka
+identifieras — och i så fall uppdateras dokumentet *innan* implementationen
+fortsätter. Kartan är kompassen: varje steg har ett "klart när"-kriterium, och
+hela fasen är underordnad en enda port — **perft**.
 
 ---
 
@@ -210,18 +213,26 @@ och beskärning**, inte för laglighet.
 
 Vi är klara — och får först då röra Fas 2 — när **samtliga** är sanna:
 
-- [ ] Perft matchar publicerade värden exakt på alla sex standardställningar,
+- [x] Perft matchar publicerade värden exakt på alla sex standardställningar,
       minst till djup 5 (startställningen och Kiwipete gärna djupare).
-- [ ] **I varje perft-nod:** hash räknad från grunden == inkrementell hash,
+- [x] **I varje perft-nod:** hash räknad från grunden == inkrementell hash,
       över hela sviten.
-- [ ] make→unmake återställer ställningen bit-för-bit, inkl. Zobrist-hash,
+- [x] make→unmake återställer ställningen bit-för-bit, inkl. Zobrist-hash,
       verifierat över hundratusentals slumpdrag.
-- [ ] **Ren körning under `-fsanitize=address,undefined` till djup 4–5.**
-- [ ] **Magic-talen framsökta av vår egen kod, med vår egen ray-tracing som facit.**
-- [ ] Kompilerar rent med `g++ -O3 -std=c++17 src/*.cpp -o Roj` utan varningar.
-- [ ] Klarar UCI-handskakningen och spelar, kopplad till ett GUI, ett helt parti
+- [x] **Ren körning under `-fsanitize=address,undefined` till djup 4–5** — körd
+      ren på Linux över alla sex ställningar (alla PASS, exit 0, noll
+      ASan/UBSan-diagnostik, tripwires bekräftat aktiva), via den dedikerade
+      drivrutinen `tests/perft_sanitize.cpp`.
+- [x] **Magic-talen framsökta av vår egen kod, med vår egen ray-tracing som facit.**
+- [x] Kompilerar rent med `g++ -O3 -std=c++17 src/*.cpp -o Roj` utan varningar.
+- [x] Klarar UCI-handskakningen och spelar, kopplad till ett GUI, ett helt parti
       från start till matt/remi utan ett enda olagligt drag.
-- [ ] Ingen rad kod kopierad eller härledd från någon annan engine.
+- [x] Ingen rad kod kopierad eller härledd från någon annan engine.
+
+**Reproducerbarhet (Fas 2):** Linux/sanitizer-grinden görs permanent och
+automatisk via ett GitHub Actions-workflow (`ubuntu-latest`) som kör
+ASan+UBSan-grinden (`tests/perft_sanitize.cpp`) vid varje push — i stället för
+en manuell lokal WSL-körning. WSL är uppskjutet.
 
 ---
 
@@ -237,16 +248,44 @@ Fungerar identiskt på Windows (via MSYS2-skalet, där `src/*.cpp` expanderas
 korrekt) och Linux. Windows → `Roj.exe`, Linux → `Roj`. Inget Windows-specifikt
 införs någonsin.
 
-**Debug-/sanitizerbygge:**
+**Debug-/sanitizerbygge — två mål.**
+
+*Motorn* (sanerar UCI-vägarna och, från Fas 2, sökvägarna — men utövar **inte**
+perft; UCI-loopen har inget perft-kommando):
 
 ```
 g++ -O1 -g -std=c++17 -fsanitize=address,undefined -fno-omit-frame-pointer src/*.cpp -o Roj_debug
 ```
 
+*Perft-porten* (§6, §8) körs av testharnessen, som har en egen `main()` och
+därför **inte** kan länkas med `src/main.cpp` (två `main()` → länkfel).
+Sanitizer-målet för perft är **en enda** liten dedikerad drivrutin,
+`tests/perft_sanitize.cpp`, som kör de sex standardställningarna till djup 4
+(startställningen även djup 5) med from-scratch-hash-invarianten PÅ i varje nod,
+kompilerad mot de motormoduler perft beror på:
+
+```
+g++ -O1 -g -std=c++17 -fsanitize=address,undefined -fno-sanitize-recover=all \
+    -fno-omit-frame-pointer \
+    tests/perft_sanitize.cpp \
+    src/perft.cpp src/movegen.cpp src/position.cpp src/fen.cpp \
+    src/attacks.cpp src/magic.cpp src/zobrist.cpp \
+    -o /tmp/perft_sanitize
+```
+
+`-fno-sanitize-recover=all` gör att första ASan/UBSan-felet ger nollskild exit i
+stället för att bara skrivas ut — exit-koden blir grinden. Djupen är medvetet
+kapade till 4–5 (DoD §8) så att körningen blir klar på minuter under ASan; de
+djupa lövnodsantalen (start d6, Kiwipete d5, …) bevisas separat av
+perft-porten `tests/test_perft.cpp` vid `-O3` — gaten, inte en
+sanitizer-drivrutin. Källfilslistan uppdateras om perft får nya
+modulberoenden.
+
 Sanitizers är mest pålitliga på **Linux** — vilket passar, eftersom
-Linux-kompatibilitet ändå ska finnas från dag ett. UBSan fångar skift-klassen
-(`1ULL << 64`) även på Windows via MSYS2; full **ASan** är ett Linux-steg
-(MinGW-stödet är begränsat).
+Linux-kompatibilitet ändå ska finnas från dag ett. Full **ASan** är ett
+Linux-steg (MinGW saknar `libasan`); UBSan fångar skift-klassen (`1ULL << 64`)
+även på Windows i trap-läge (`-fsanitize=undefined -fsanitize-trap=undefined`,
+ingen runtime-lib krävs).
 
 **En anteckning om EP-konvention** (att spika när from-scratch-hashen skrivs i
 steg 9/13): den inkrementella och den från grunden måste använda *exakt samma*
