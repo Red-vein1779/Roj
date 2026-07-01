@@ -49,10 +49,21 @@ stillager), som är **medvetet uppskjutet**.
 > inte. När Fas 4 byggs ersätts eller byggs stommen ut enligt det beslut som då
 > fattas.
 
-**Krav på stommen:** den måste vara **symmetrisk** — `eval(pos)` ur draggande
-sidans vy ska vara exakt `-eval(pos)` för samma ställning med färgerna speglade.
-En osymmetrisk eval ger subtila sökfel som är svåra att spåra. Symmetrin
-verifieras i steg 1.
+**Krav på stommen:** den måste vara **symmetrisk**. Spegeln definieras *exakt*:
+byt färg på alla pjäser OCH spegla brädet vertikalt (`s ↔ s^56`). Med en
+draggande-sidans-relativ eval beror den korrekta relationen på hur *sidan att
+dra* hanteras i spegeln, och de två uttrycken är ekvivalenta:
+
+- **Behåll** sidan att dra → `eval(pos) == -eval(spegel)` (**negation**). Detta är
+  den form §7 steg 1 bokstavligen namnger.
+- **Byt** även sidan att dra → de två tecknen tar ut varandra och relationen blir
+  `eval(pos) == +eval(spegel)` (**likhet**). Denna form är den *starkare*
+  kontrollen: den fångar även ett trasigt sidan-relativt tecken.
+
+Steg 1 testar **båda**: negationsformen som det låsta kriteriet och likhetsformen
+som extra kontroll. (Att blanda ihop dem — byta sida att dra men ändå kräva
+negation — ger ett falskt failande test; håll spegeloperationen och påståendet
+ihopkopplade.) En osymmetrisk eval ger subtila sökfel som är svåra att spåra.
 
 Materialvärden (våra, i en centipawn-liknande enhet; magnituderna är standard,
 koden är vår): `P=100, N=320, B=330, R=500, Q=900`. PST:erna är små och hålls
@@ -167,7 +178,7 @@ en grund, deterministisk testställning + nodantal nästan alltid vägen in.
 
 | # | Steg | Klart när |
 |---|------|-----------|
-| 1 | Score-konventioner + eval-stomme | Konstanterna i §4 låsta; material+PST utvärderar; `eval(pos) == -eval(spegel)` verifierat; mate-konventionen dokumenterad i koden. |
+| 1 | Score-konventioner + eval-stomme | Konstanterna i §4 låsta; material+PST utvärderar; symmetri verifierad — spegel = färgbyte + vertikal flip (se §2): negationsformen (`eval(pos) == -eval(spegel)`, samma sida att dra) som låst kriterium OCH likhetsformen (`eval(pos) == +eval(spegel)`, bytt sida att dra) som extra kontroll; egen-spegling ger exakt 0; mate-konventionen dokumenterad i koden. |
 | 2 | Negamax alpha-beta, fast djup | Ingen TT, ingen qsearch. Hittar mate-in-1 och mate-in-2 i testställningar; rot-score matchar handräknat på grunda träd; fail-soft-returen korrekt. |
 | 3 | MVV-LVA-ordning av slagdrag | Slag sorteras högt-värderat-offer / lågt-värderad-angripare först; nodantalet sjunker mot osorterat **med identisk score**. |
 | 4 | Quiescence search | Taktiska värden stabiliseras (inga hängande-pjäs-blunders vid horisonten); schack i en qnod genererar *alla* flyktdrag; delta pruning aktiv; **perft fortsatt grön**. |
