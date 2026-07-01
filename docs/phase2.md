@@ -183,7 +183,7 @@ en grund, deterministisk testställning + nodantal nästan alltid vägen in.
 | 3 | MVV-LVA-ordning av slagdrag | Slag sorteras högt-värderat-offer / lågt-värderad-angripare först; nodantalet sjunker mot osorterat **med identisk score**. |
 | 4 | Quiescence search | Taktiska värden stabiliseras (inga hängande-pjäs-blunders vid horisonten); schack i en qnod genererar *alla* flyktdrag; delta pruning aktiv; **perft fortsatt grön**. |
 | 5 | Killers + history (tysta drag) | Nodantalet sjunker vid samma djup med **identisk bästa score** och (i normalfallet, strikt unik score) identiskt bästa drag. |
-| 6 | Transposition table | TT-invarianten håller (§7): rot-score identisk med/utan TT och oberoende av `Hash`-storlek; mate-score round-trip korrekt; ersättning fungerar; tripwire bekräftar att invarianten inte är en no-op. |
+| 6 | Transposition table | TT-invarianten håller (§8): rot-score identisk **oberoende av `Hash`-storlek** (t.ex. 1 MB vs 256 MB) och deterministisk; mate-score round-trip korrekt; ersättning fungerar; tripwire bekräftar (larmar vid korrumperat TT-fält) att värdena faktiskt används. |
 | 7 | Iterativ fördjupning + PV + `info` | ID rapporterar depth/score/nodes/nps/pv/time korrekt; PV är laglig och spelbar; scoren mellan iterationer är rimlig och monoton i normalfallet. |
 | 8 | Remi-detektion i sökningen | Tvåfaldig repetition i trädet ger 0; pre-rot-historiken räknas; 50-drag och otillräckligt material ger 0; matt har företräde framför 50-drag; verifierat på konstruerade ställningar. |
 | 9 | Tidshantering + avbrytbar sökning | **Förlorar aldrig på tid** över flera tidskontroller (inkl. mycket korta); ren abort returnerar förra hela iterationens bästa drag; mjuk/hård gräns respekteras. |
@@ -201,23 +201,60 @@ sökning finns ingen enda magisk siffra — men det finns en **stark, objektiv
 invariant** som spelar samma roll:
 
 > **I en deterministisk, single-threaded, fail-soft alpha-beta vid fast djup
-> måste rot-scoren vara *identisk* med och utan transpositionstabell, och
-> oberoende av `Hash`-storleken** (testa t.ex. 1 MB mot 256 MB).
+> måste rot-scoren vara *identisk oberoende av `Hash`-storleken*** (testa t.ex.
+> 1 MB mot 256 MB) — samma sökning, samma svar, oavsett hur många kollisioner
+> tabellen råkar ut för.
 
-- **Bästa draget** är identiskt när den bästa scoren är *strikt* bättre än
-  alla alternativ (normalfallet). Vid exakt lika score kan draget skilja sig —
+**Rättelse mot en tidigare felformulering (låst efter konkret fynd i steg 6):**
+en ursprunglig version krävde att rot-scoren skulle vara identisk *med och utan*
+TT. Det är **ouppnåbart tillsammans med fail-soft + värde-cutoffs**, och det är en
+teknisk motsägelse i planen, inte en bugg i koden. I fail-soft (§3 beslut 1) beror
+en nods returvärde på det `[alpha, beta]`-fönster den söktes med. En LOWER/UPPER-
+gräns som lagrats längs en sökväg återanvänds vid en annan nod med ett *annat*
+fönster; det fail-soft-värde cutoffen då kortsluter med kan skilja sig från vad
+noden hade räknat fram färskt — utan att något är fel. Verifierat empiriskt i
+steg 6: att stänga av TT-*cutoffs* (behålla enbart TT-drag-ordning + store)
+återställer exakt TT-av-identitet, vilket bevisar att det är värde-återanvändningen,
+inte dragordningen, som bryter den. De tre låsta besluten §3 dec 1 (fail-soft),
+§3 dec 5 (TT-bound-cutoffs) och en `==TT-av`-grind kan inte alla hålla samtidigt;
+hela TT:ns beskärningskraft *är* LOWER/UPPER-cutoffs, så att offra dem för
+identitet vore att besegra tabellen. Vi behåller alltså fulla fail-soft-cutoffs
+och byter grind till det fail-soft faktiskt uppfyller.
+
+**Grinden (konjunktion av objektiva kontroller):**
+
+- **Hash-oberoende:** rot-scoren identisk vid t.ex. 1 MB och 256 MB, över en svit
+  av ställningar och djup. Kollisions-/ersättningsbeteende får inte ändra svaret.
+- **Determinism / reproducerbarhet:** samma indata ger samma rot-score och
+  nodsignatur körning efter körning (single-threaded är grunden).
+- **Mate-score round-trip:** lagra en matt-score på ett ply, läs den på ett annat,
+  kontrollera att avståndet är korrekt (§4); en forcerad matt löst *med* TT ger
+  samma matt-score och -avstånd som utan TT.
+- **Tripwire (nu den primära äkthetskontrollen):** precis som Zobrist-tripwiren i
+  Fas 1 — korrumpera medvetet ett TT-fält (fel score, hoppa över value_to_tt-
+  justeringen, eller ignorera djupvillkoret) och bekräfta att grinden *larmar*;
+  återställ och bekräfta att den passerar. Eftersom vi inte längre har en TT-av-
+  jämförelse att luta oss mot är tripwiren det som bevisar att TT-värden faktiskt
+  används korrekt, inte bara att de är interna-konsistenta.
+- **Bästa draget** är identiskt (mellan Hash-storlekar) när den bästa scoren är
+  *strikt* bättre än alla alternativ. Vid exakt lika score kan draget skilja sig —
   det är **inte** en bugg.
-- **Mate-score round-trip** är en del av invarianten: lagra en matt-score på ett
-  ply, läs den på ett annat, kontrollera att avståndet är korrekt (§4).
-- **Tripwire:** precis som Zobrist-tripwiren i Fas 1 — korrumpera medvetet ett
-  TT-fält och bekräfta att invarianten *larmar*. Annars vet vi inte att kontrollen
-  faktiskt testar något.
+- **Söknings-korrekthet i övrigt** bevakas av regressionen: sökningen förblir en
+  korrekt alpha-beta (steg 2:s minimax-ekvivalens på TT-av-vägen, mate-sviten).
+
+**Ärligt om täckningen:** denna grind är något svagare än en sann TT-av-jämförelse
+skulle ha varit *om den vore möjlig* — en ren värde-bug som är identisk vid alla
+Hash-storlekar fångas inte av Hash-oberoende ensam. Därför väger tripwiren och
+mate-round-trippen tyngre här. Tillsammans fångar de den stora majoriteten av
+verkliga TT-buggar (fel indexering, fel bound-typ, trasig mate-justering,
+ersättningsbuggar), och det är en solid, objektiv port — bara inte den omöjliga
+versionen.
 
 **Varför just i Fas 2:** Fas 3:s LMR, null move pruning och futility pruning
-bryter exakt reproducerbarhet-mot-TT på subtila sätt — reduktionerna beror på
+bryter reproducerbarheten på ännu subtilare sätt — reduktionerna beror på
 dragordning och history, som TT-träffar stör. Fas 2 är därför det **enda rena
-fönstret** att bevisa TT:n innan beskärningen grumlar vattnet. Bevisas den inte
-nu, bevisas den aldrig.
+fönstret** att fästa TT:ns Hash-oberoende och tripwire innan beskärningen grumlar
+vattnet. Fästs den inte nu, fästs den aldrig.
 
 ---
 
@@ -320,8 +357,7 @@ fastchess \
 
 Vi är klara — och får först då röra Fas 3 — när **samtliga** är sanna:
 
-- [ ] **TT-invarianten håller** (§7): rot-score identisk med/utan TT och oberoende
-      av `Hash`-storlek, över en svit av ställningar och djup.
+- [ ] **TT-invarianten håller** (§8): rot-score identisk **oberoende av `Hash`-storlek** (t.ex. 1 MB vs 256 MB) och deterministisk, över en svit av ställningar och djup; tripwire larmar vid korrumperat TT-fält.
 - [ ] **Mate-svit:** korrekt matt-*score* OCH matt-*drag* på en uppsättning
       forcerade matt (mate-in-1 till -4).
 - [ ] **Aldrig förlust på tid** över flera tidskontroller, inklusive mycket korta.
