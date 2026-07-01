@@ -1,10 +1,11 @@
-// Roj chess engine — Phase 2: negamax + MVV-LVA + quiescence + killers/history (search.h).
+// Roj chess engine — Phase 2: negamax + MVV-LVA + quiescence + killers/history + TT (search.h).
 
 #include "search.h"
 #include "eval.h"
 #include "movegen.h"
 #include "bitboard.h"
 #include "value.h"
+#include "tt.h"
 
 #include <algorithm>
 
@@ -17,13 +18,10 @@ bool in_check(const Position& pos) {
     return is_attacked(ksq, ~pos.side_to_move, pos);
 }
 
-// Score when the side to move has no legal moves: mated (in check) or stalemated.
 int terminal_score(const Position& pos, int ply) {
     return in_check(pos) ? (-VALUE_MATE + ply) : VALUE_DRAW;
 }
 
-// Does move m capture? A normal move captures iff an enemy piece stands on `to`;
-// en passant always captures; a promotion captures iff it carries the capture bit.
 bool is_capture(const Position& pos, Move m) {
     const MoveType mt = move_type(m);
     if (mt == EN_PASSANT) return true;
@@ -31,30 +29,28 @@ bool is_capture(const Position& pos, Move m) {
     return test_bit(pos.byColor[~pos.side_to_move], to_sq(m));
 }
 
-// A "noisy" move for quiescence: any capture or a quiet queen promotion.
 bool is_noisy(const Position& pos, Move m) {
     if (is_capture(pos, m)) return true;
     return is_promotion(m) && promotion_type(m) == QUEEN;
 }
 
-// Piece values for delta pruning (centipawns, matching the eval material scale).
 constexpr int PIECE_VALUE[PIECE_TYPE_NB] = { 0, 100, 320, 330, 500, 900, 0 };
-constexpr int DELTA_MARGIN = 200;   // ~a minor piece; see phase2.md section 9
+constexpr int DELTA_MARGIN = 200;
 
-// Ordering score bands (descending priority): captures on top, then the two
-// killers, then history for the remaining quiet moves. History is kept well below
-// the killer band by aging, and quiet moves with no history score 0.
+// Ordering score bands (descending priority): TT move, then captures (MVV-LVA),
+// then the two killers, then history for remaining quiet moves.
+constexpr int TT_MOVE_SCORE  = 1 << 24;
 constexpr int CAPTURE_BONUS  = 1 << 20;
 constexpr int KILLER_0_SCORE = 1 << 19;
 constexpr int KILLER_1_SCORE = 1 << 18;
-constexpr int HISTORY_MAX    = 1 << 16;   // halve the table when an entry exceeds this
+constexpr int HISTORY_MAX    = 1 << 16;
 
-// Ordering key for the MAIN search (captures via MVV-LVA, then killers, then
-// history). qsearch uses order_moves() below (MVV-LVA only).
-int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info) {
+int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info, Move ttMove) {
+    if (ttMove != MOVE_NONE && m == ttMove)
+        return TT_MOVE_SCORE;                      // TT move first (Step 6 extension point)
     if (info.use_mvv_lva) {
         const int cap = capture_score(pos, m);
-        if (cap > 0) return CAPTURE_BONUS + cap;   // captures always ahead of quiets
+        if (cap > 0) return CAPTURE_BONUS + cap;
     }
     if (info.use_killers_history) {
         if (ply < MAX_PLY) {
@@ -66,12 +62,12 @@ int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& inf
     return 0;
 }
 
-void order_search_moves(const Position& pos, MoveList& ml, int ply, const SearchInfo& info) {
-    if (!info.use_mvv_lva && !info.use_killers_history)
+void order_search_moves(const Position& pos, MoveList& ml, int ply, const SearchInfo& info, Move ttMove) {
+    if (ttMove == MOVE_NONE && !info.use_mvv_lva && !info.use_killers_history)
         return;                                    // natural order (Step 2)
     std::stable_sort(ml.moves, ml.moves + ml.count,
         [&](Move a, Move b) {
-            return move_order_score(pos, a, ply, info) > move_order_score(pos, b, ply, info);
+            return move_order_score(pos, a, ply, info, ttMove) > move_order_score(pos, b, ply, info, ttMove);
         });
 }
 
@@ -105,15 +101,15 @@ void order_moves(const Position& pos, MoveList& ml) {
 
 void store_killer(SearchInfo& info, int ply, Move m) {
     if (ply < 0 || ply >= MAX_PLY) return;
-    if (info.killers[ply][0] == m) return;         // already killer 0: no duplicate
-    info.killers[ply][1] = info.killers[ply][0];   // shift slot 0 -> slot 1
-    info.killers[ply][0] = m;                      // install new killer 0
+    if (info.killers[ply][0] == m) return;
+    info.killers[ply][1] = info.killers[ply][0];
+    info.killers[ply][0] = m;
 }
 
 void update_history(SearchInfo& info, Color side, Move m, int depth) {
     int& h = info.history[side][from_sq(m)][to_sq(m)];
-    h += depth * depth;                            // depth-weighted bonus
-    if (h > HISTORY_MAX) {                          // aging: halve the whole table
+    h += depth * depth;
+    if (h > HISTORY_MAX) {
         for (int c = 0; c < COLOR_NB; ++c)
             for (int f = 0; f < SQUARE_NB; ++f)
                 for (int t = 0; t < SQUARE_NB; ++t)
@@ -124,7 +120,7 @@ void update_history(SearchInfo& info, Color side, Move m, int depth) {
 int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     ++info.nodes;
 
-    if (ply >= MAX_PLY)              // safety guard; natural termination is material decrease
+    if (ply >= MAX_PLY)
         return evaluate(pos);
 
     const bool inCheck = in_check(pos);
@@ -136,7 +132,7 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     if (inCheck) {
         generate_legal_moves(pos, ml);
         if (ml.count == 0)
-            return -VALUE_MATE + ply;              // checkmate at a qsearch node
+            return -VALUE_MATE + ply;
         best = -VALUE_INFINITE;
     } else {
         stand_pat = evaluate(pos);
@@ -188,21 +184,40 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     if (depth == 0)                  // horizon: quiescence or the static eval stub
         return info.use_qsearch ? qsearch(pos, alpha, beta, ply, info) : evaluate(pos);
 
-    order_search_moves(pos, ml, ply, info);
+    const int alpha_orig = alpha;
 
-    int best = -VALUE_INFINITE;      // fail-soft floor
+    // --- TT probe (before moving) ---
+    // GHI note (phase2.md section 9): no repetition/draw scores are stored yet
+    // (draw detection is Step 8). When it is added, repetition must be detected
+    // along the search PATH before a TT draw score is trusted, since the TT is
+    // path-independent. Nothing here is path-dependent for now.
+    Move ttMove = MOVE_NONE;
+    if (info.tt != nullptr) {
+        TTEntry e;
+        if (info.tt->probe(pos.hash, e)) {
+            ttMove = e.move;
+            if (e.depth >= depth) {
+                const int s = value_from_tt(e.score, ply);
+                if (e.bound == BOUND_EXACT) return s;
+                if (e.bound == BOUND_LOWER && s >= beta) return s;
+                if (e.bound == BOUND_UPPER && s <= alpha) return s;
+            }
+        }
+    }
+
+    order_search_moves(pos, ml, ply, info, ttMove);
+
+    int  best     = -VALUE_INFINITE;
+    Move bestMove = MOVE_NONE;
     for (int i = 0; i < ml.count; ++i) {
         const Move m = ml.moves[i];
         make_move(pos, m);
         const int score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info);
         unmake_move(pos, m);
 
-        if (score > best) best = score;
+        if (score > best) { best = score; bestMove = m; }
         if (best > alpha)  alpha = best;
         if (alpha >= beta) {
-            // Beta cutoff: reward a QUIET cutoff move for ordering (killers +
-            // history). Captures are already ordered by MVV-LVA, so they are not
-            // stored as killers.
             if (info.use_killers_history && !is_capture(pos, m)) {
                 store_killer(info, ply, m);
                 update_history(info, pos.side_to_move, m, depth);
@@ -210,12 +225,24 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
             break;
         }
     }
-    return best;                     // FAIL-SOFT: the true best, never clamped
+
+    // --- TT store (on leaving the node) ---
+    if (info.tt != nullptr) {
+        const Bound b = (best <= alpha_orig) ? BOUND_UPPER
+                      : (best >= beta)       ? BOUND_LOWER
+                                             : BOUND_EXACT;
+        int storeScore = value_to_tt(best, ply);
+        if (info.tt_tripwire) storeScore += 7;   // TRIPWIRE (tests only): corrupt the stored score
+        info.tt->store(pos.hash, bestMove,
+                       static_cast<std::int16_t>(storeScore),
+                       static_cast<std::int16_t>(depth), b);
+    }
+    return best;
 }
 
 SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
     if (info.use_killers_history)
-        clear_killers_history(info);              // hygiene: start each search clean
+        clear_killers_history(info);
 
     ++info.nodes;
 
@@ -227,7 +254,7 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
         return { info.use_qsearch ? qsearch(pos, -VALUE_INFINITE, VALUE_INFINITE, 0, info)
                                   : evaluate(pos), MOVE_NONE };
 
-    order_search_moves(pos, ml, 0, info);
+    order_search_moves(pos, ml, 0, info, MOVE_NONE);   // root visited once; children carry the TT
 
     int  best     = -VALUE_INFINITE;
     Move bestMove = MOVE_NONE;
@@ -241,12 +268,11 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
 
         if (score > best) { best = score; bestMove = ml.moves[i]; }
         if (best > alpha) alpha = best;
-        // Full window (beta = +VALUE_INFINITE): no root cutoff; best is exact.
     }
     return { best, bestMove };
 }
 
-// --- Step 2/3 convenience overloads (ordering OFF, quiescence OFF) -----------
+// --- Step 2/3 convenience overloads (ordering OFF, quiescence OFF, no TT) -----
 int search(Position& pos, int depth, int alpha, int beta, int ply) {
     SearchInfo info;
     info.use_mvv_lva = false;

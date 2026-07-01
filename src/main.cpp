@@ -12,6 +12,7 @@
 #include "position.h"
 #include "movegen.h"
 #include "fen.h"
+#include "tt.h"
 
 #include <iostream>
 #include <sstream>
@@ -22,6 +23,7 @@ namespace roj {
 void uci_identify() {
     std::cout << "id name " << ENGINE_NAME << ' ' << ENGINE_VERSION << '\n'
               << "id author " << ENGINE_AUTHOR << '\n'
+              << "option name Hash type spin default 16 min 1 max 1024\n"
               << "uciok" << std::endl;
 }
 
@@ -128,6 +130,9 @@ void uci_loop() {
     Position pos;
     parse_fen(pos, START_FEN);   // a sensible default before any "position"
 
+    TranspositionTable tt;
+    tt.resize(16);   // default Hash size (Step 6); real search through `go` is Step 7
+
     std::string line;
     while (std::getline(std::cin, line)) {
         std::istringstream iss(line);
@@ -140,6 +145,17 @@ void uci_loop() {
             std::cout << "readyok" << std::endl;
         } else if (token == "ucinewgame") {
             parse_fen(pos, START_FEN);
+            tt.clear();
+        } else if (token == "setoption") {
+            // "setoption name Hash value <MB>": (re)size the transposition table.
+            std::string w, name, value;
+            iss >> w >> name >> w >> value;   // name <Hash> value <MB>
+            if (name == "Hash") {
+                try {
+                    const int mb = std::stoi(value);
+                    if (mb >= 1) tt.resize(static_cast<std::size_t>(mb));
+                } catch (...) { /* ignore malformed value */ }
+            }
         } else if (token == "position") {
             uci_position(pos, iss);
         } else if (token == "go") {
