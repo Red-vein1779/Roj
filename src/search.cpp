@@ -1,4 +1,4 @@
-// Roj chess engine — Phase 2: negamax alpha-beta + MVV-LVA ordering + quiescence (search.h).
+// Roj chess engine — Phase 2: negamax + MVV-LVA + quiescence + killers/history (search.h).
 
 #include "search.h"
 #include "eval.h"
@@ -17,8 +17,7 @@ bool in_check(const Position& pos) {
     return is_attacked(ksq, ~pos.side_to_move, pos);
 }
 
-// Score when the side to move has no legal moves: mated (in check) or stalemated
-// (not). Node-relative mate distance per phase2.md section 4.
+// Score when the side to move has no legal moves: mated (in check) or stalemated.
 int terminal_score(const Position& pos, int ply) {
     return in_check(pos) ? (-VALUE_MATE + ply) : VALUE_DRAW;
 }
@@ -32,8 +31,7 @@ bool is_capture(const Position& pos, Move m) {
     return test_bit(pos.byColor[~pos.side_to_move], to_sq(m));
 }
 
-// A "noisy" move for quiescence: any capture (incl. capture-promotions) or a quiet
-// queen promotion. Non-capture underpromotions are NOT noisy.
+// A "noisy" move for quiescence: any capture or a quiet queen promotion.
 bool is_noisy(const Position& pos, Move m) {
     if (is_capture(pos, m)) return true;
     return is_promotion(m) && promotion_type(m) == QUEEN;
@@ -41,21 +39,58 @@ bool is_noisy(const Position& pos, Move m) {
 
 // Piece values for delta pruning (centipawns, matching the eval material scale).
 constexpr int PIECE_VALUE[PIECE_TYPE_NB] = { 0, 100, 320, 330, 500, 900, 0 };
+constexpr int DELTA_MARGIN = 200;   // ~a minor piece; see phase2.md section 9
 
-// Delta-pruning safety margin (~a minor piece). A capture whose victim value plus
-// this margin still cannot lift the static eval to alpha is skipped (not in check,
-// non-promotion captures only). See phase2.md section 9 "Delta pruning".
-constexpr int DELTA_MARGIN = 200;
+// Ordering score bands (descending priority): captures on top, then the two
+// killers, then history for the remaining quiet moves. History is kept well below
+// the killer band by aging, and quiet moves with no history score 0.
+constexpr int CAPTURE_BONUS  = 1 << 20;
+constexpr int KILLER_0_SCORE = 1 << 19;
+constexpr int KILLER_1_SCORE = 1 << 18;
+constexpr int HISTORY_MAX    = 1 << 16;   // halve the table when an entry exceeds this
+
+// Ordering key for the MAIN search (captures via MVV-LVA, then killers, then
+// history). qsearch uses order_moves() below (MVV-LVA only).
+int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info) {
+    if (info.use_mvv_lva) {
+        const int cap = capture_score(pos, m);
+        if (cap > 0) return CAPTURE_BONUS + cap;   // captures always ahead of quiets
+    }
+    if (info.use_killers_history) {
+        if (ply < MAX_PLY) {
+            if (m == info.killers[ply][0]) return KILLER_0_SCORE;
+            if (m == info.killers[ply][1]) return KILLER_1_SCORE;
+        }
+        return info.history[pos.side_to_move][from_sq(m)][to_sq(m)];
+    }
+    return 0;
+}
+
+void order_search_moves(const Position& pos, MoveList& ml, int ply, const SearchInfo& info) {
+    if (!info.use_mvv_lva && !info.use_killers_history)
+        return;                                    // natural order (Step 2)
+    std::stable_sort(ml.moves, ml.moves + ml.count,
+        [&](Move a, Move b) {
+            return move_order_score(pos, a, ply, info) > move_order_score(pos, b, ply, info);
+        });
+}
+
+void clear_killers_history(SearchInfo& info) {
+    for (int p = 0; p < MAX_PLY; ++p) {
+        info.killers[p][0] = MOVE_NONE;
+        info.killers[p][1] = MOVE_NONE;
+    }
+    for (int c = 0; c < COLOR_NB; ++c)
+        for (int f = 0; f < SQUARE_NB; ++f)
+            for (int t = 0; t < SQUARE_NB; ++t)
+                info.history[c][f][t] = 0;
+}
 
 } // namespace
 
 int capture_score(const Position& pos, Move m) {
     if (!is_capture(pos, m))
-        return 0;                                 // quiet moves sort after captures
-    // Victim: the captured piece type (a pawn for en passant). Aggressor: the
-    // mover. Ordinals PAWN=1 < N=2 < B=3 < R=4 < Q=5 < K=6, so "victim*16 -
-    // aggressor" ranks a more valuable victim first and, among equal victims, the
-    // least valuable aggressor first (PxQ before RxQ).
+        return 0;
     const int victim = (move_type(m) == EN_PASSANT)
                          ? static_cast<int>(PAWN)
                          : static_cast<int>(piece_type_on(pos, to_sq(m)));
@@ -68,35 +103,49 @@ void order_moves(const Position& pos, MoveList& ml) {
         [&pos](Move a, Move b) { return capture_score(pos, a) > capture_score(pos, b); });
 }
 
+void store_killer(SearchInfo& info, int ply, Move m) {
+    if (ply < 0 || ply >= MAX_PLY) return;
+    if (info.killers[ply][0] == m) return;         // already killer 0: no duplicate
+    info.killers[ply][1] = info.killers[ply][0];   // shift slot 0 -> slot 1
+    info.killers[ply][0] = m;                      // install new killer 0
+}
+
+void update_history(SearchInfo& info, Color side, Move m, int depth) {
+    int& h = info.history[side][from_sq(m)][to_sq(m)];
+    h += depth * depth;                            // depth-weighted bonus
+    if (h > HISTORY_MAX) {                          // aging: halve the whole table
+        for (int c = 0; c < COLOR_NB; ++c)
+            for (int f = 0; f < SQUARE_NB; ++f)
+                for (int t = 0; t < SQUARE_NB; ++t)
+                    info.history[c][f][t] >>= 1;
+    }
+}
+
 int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     ++info.nodes;
 
-    // Safety guard against unbounded recursion. Natural termination is the strict
-    // material decrease of captures; this only trips on pathological depth.
-    if (ply >= MAX_PLY)
+    if (ply >= MAX_PLY)              // safety guard; natural termination is material decrease
         return evaluate(pos);
 
     const bool inCheck = in_check(pos);
 
     MoveList ml;
     int best;
-    int stand_pat = 0;               // meaningful only when not in check
+    int stand_pat = 0;
 
     if (inCheck) {
-        // No stand-pat in check: generate and search ALL legal evasions.
         generate_legal_moves(pos, ml);
         if (ml.count == 0)
-            return -VALUE_MATE + ply;            // checkmate at a qsearch node
+            return -VALUE_MATE + ply;              // checkmate at a qsearch node
         best = -VALUE_INFINITE;
     } else {
         stand_pat = evaluate(pos);
         if (stand_pat >= beta)
-            return stand_pat;                    // fail-soft: standing pat refutes
-        best = stand_pat;                        // seed: a quiet node keeps stand_pat
+            return stand_pat;
+        best = stand_pat;
         if (stand_pat > alpha)
             alpha = stand_pat;
 
-        // Noisy moves only: captures + quiet queen promotions.
         MoveList legal;
         generate_legal_moves(pos, legal);
         for (int i = 0; i < legal.count; ++i)
@@ -110,9 +159,6 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     for (int i = 0; i < ml.count; ++i) {
         const Move m = ml.moves[i];
 
-        // Delta pruning (not in check): skip a plain capture that cannot raise
-        // alpha even with the margin. Disabled in check and for promotions /
-        // capture-promotions (where the value can jump).
         if (!inCheck && info.use_delta_pruning && is_capture(pos, m) && !is_promotion(m)) {
             const int victim = (move_type(m) == EN_PASSANT)
                                  ? PIECE_VALUE[PAWN]
@@ -129,7 +175,7 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
         if (best > alpha)  alpha = best;
         if (alpha >= beta) break;
     }
-    return best;                     // FAIL-SOFT (seeded with stand_pat when not in check)
+    return best;
 }
 
 int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info) {
@@ -142,23 +188,35 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     if (depth == 0)                  // horizon: quiescence or the static eval stub
         return info.use_qsearch ? qsearch(pos, alpha, beta, ply, info) : evaluate(pos);
 
-    if (info.use_mvv_lva)
-        order_moves(pos, ml);
+    order_search_moves(pos, ml, ply, info);
 
     int best = -VALUE_INFINITE;      // fail-soft floor
     for (int i = 0; i < ml.count; ++i) {
-        make_move(pos, ml.moves[i]);
+        const Move m = ml.moves[i];
+        make_move(pos, m);
         const int score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info);
-        unmake_move(pos, ml.moves[i]);
+        unmake_move(pos, m);
 
         if (score > best) best = score;
         if (best > alpha)  alpha = best;
-        if (alpha >= beta) break;    // beta cutoff
+        if (alpha >= beta) {
+            // Beta cutoff: reward a QUIET cutoff move for ordering (killers +
+            // history). Captures are already ordered by MVV-LVA, so they are not
+            // stored as killers.
+            if (info.use_killers_history && !is_capture(pos, m)) {
+                store_killer(info, ply, m);
+                update_history(info, pos.side_to_move, m, depth);
+            }
+            break;
+        }
     }
     return best;                     // FAIL-SOFT: the true best, never clamped
 }
 
 SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
+    if (info.use_killers_history)
+        clear_killers_history(info);              // hygiene: start each search clean
+
     ++info.nodes;
 
     MoveList ml;
@@ -169,8 +227,7 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
         return { info.use_qsearch ? qsearch(pos, -VALUE_INFINITE, VALUE_INFINITE, 0, info)
                                   : evaluate(pos), MOVE_NONE };
 
-    if (info.use_mvv_lva)
-        order_moves(pos, ml);
+    order_search_moves(pos, ml, 0, info);
 
     int  best     = -VALUE_INFINITE;
     Move bestMove = MOVE_NONE;
