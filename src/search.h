@@ -14,6 +14,7 @@
 #include "movegen.h"
 #include "value.h"
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -71,6 +72,24 @@ struct SearchInfo {
     // order-invariant (ID(N) == a direct depth-N search). When null, Steps 2-6
     // behaviour is unchanged (full TT cutoffs, no PV).
     PvTable* pv = nullptr;
+
+    // Step 9: time management + abortable search. `check_time` is the master switch
+    // for ALL of this: when it is false (fixed-depth `go depth N`, the minimax
+    // oracle, and every test that searches a fixed depth) none of the fields below
+    // are consulted, so those searches stay byte-for-byte deterministic. search_id()
+    // owns the clock: it stamps `start_time`, enforces the soft limit between
+    // iterations, and ARMS the hard abort only after depth 1 has completed so a
+    // legal move always exists.
+    bool          check_time          = false;  // master switch for abort logic
+    bool          use_time_management  = false;  // soft/hard wall-clock limits active
+    long long     soft_ms             = 0;       // don't START a new iteration past this
+    long long     hard_ms             = 0;       // abort the RUNNING iteration past this
+    std::uint64_t max_nodes           = 0;       // node limit (0 = none; `go nodes N`)
+    const bool*   stop                = nullptr; // external stop request (UCI `stop`)
+    std::chrono::steady_clock::time_point start_time;  // stamped by search_id()
+    bool          aborted             = false;   // set once a limit/stop has fired
+    bool          abort_armed         = false;   // true only after depth 1 completes
+    int           completed_depth     = 0;       // deepest fully-completed iteration
 };
 
 // Fail-soft negamax alpha-beta at fixed `depth`.
@@ -83,6 +102,15 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info);
 // the best move + PV of the last completed iteration. When printInfo, emit a UCI
 // `info` line after each iteration. Returns the final iteration's result.
 SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool printInfo);
+
+// Step 9: a simple soft/hard time budget in milliseconds from the side-to-move
+// clock. `movetime >= 0` dominates (soft = hard = movetime - overhead). Otherwise
+// the budget derives from the remaining time, the increment and movestogo (a fixed
+// divisor is assumed when movestogo <= 0). The hard cap is at most half the usable
+// time, so repeatedly spending it can never make the clock flag. Deliberately
+// simple (the sophisticated manager is Phase 7). Shared by `go` and the tests.
+struct TimeBudget { long long soft_ms; long long hard_ms; };
+TimeBudget compute_time_budget(long long remaining, long long inc, int movestogo, long long movetime);
 
 // Quiescence search (Step 4).
 int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info);

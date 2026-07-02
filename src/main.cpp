@@ -15,6 +15,7 @@
 #include "tt.h"
 #include "search.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -105,19 +106,30 @@ void uci_position(Position& pos, std::istringstream& iss, std::vector<std::uint6
     }
 }
 
-// "go [depth N]": run the iterative-deepening search to depth N (default 6; real
-// time management is Step 9) and return the real best move plus a full info trail.
+// "go [wtime .. btime .. winc .. binc .. movestogo ..] | movetime T | depth N |
+//  nodes N | infinite": run iterative deepening under the chosen limit and print
+// the best move plus a full info trail. `go depth N` stays a fixed-depth,
+// deterministic search (no time checks); a clock/movetime/nodes limit drives the
+// soft/hard abort (Step 9). `infinite` and a bare `go` keep the pre-Step-9 default
+// (fixed depth 6): a single-threaded engine cannot receive `stop` mid-search, so a
+// truly unbounded search is deferred to the async input of a later phase.
 void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
             const std::vector<std::uint64_t>& gameKeys) {
-    int depth = 6;
+    long long wtime = -1, btime = -1, winc = 0, binc = 0, movetime = -1, nodes = -1;
+    int movestogo = 0, depth = -1;
+    bool infinite = false;
     std::string token;
     while (iss >> token) {
-        if (token == "depth")
-            iss >> depth;
-        // other "go" parameters (wtime/btime/movetime/...) are ignored until Step 9
+        if      (token == "wtime")     iss >> wtime;
+        else if (token == "btime")     iss >> btime;
+        else if (token == "winc")      iss >> winc;
+        else if (token == "binc")      iss >> binc;
+        else if (token == "movestogo") iss >> movestogo;
+        else if (token == "movetime")  iss >> movetime;
+        else if (token == "depth")     iss >> depth;
+        else if (token == "nodes")     iss >> nodes;
+        else if (token == "infinite")  infinite = true;
     }
-    if (depth < 1) depth = 1;
-    if (depth > MAX_PLY - 1) depth = MAX_PLY - 1;
 
     SearchInfo info;
     info.use_mvv_lva = true;
@@ -136,7 +148,35 @@ void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
         info.rep.assign(gameKeys.begin(), gameKeys.end() - 1);
     info.rep.reserve(info.rep.size() + MAX_PLY);
 
-    const SearchResult r = search_id(pos, depth, info, /*printInfo=*/true);
+    // Choose the limit. Priority: fixed depth > node limit > movetime > clock >
+    // infinite/default. Only the first branch is deterministic (no time checks).
+    int maxDepth = MAX_PLY - 1;
+    if (depth >= 1) {
+        maxDepth = std::min(depth, MAX_PLY - 1);          // fixed depth: check_time stays false
+    } else if (nodes >= 0) {
+        info.check_time = true;
+        info.max_nodes  = static_cast<std::uint64_t>(nodes);
+    } else if (movetime >= 0) {
+        info.check_time = true;
+        info.use_time_management = true;
+        const TimeBudget b = compute_time_budget(0, 0, 0, movetime);
+        info.soft_ms = b.soft_ms;
+        info.hard_ms = b.hard_ms;
+    } else if (wtime >= 0 || btime >= 0) {
+        info.check_time = true;
+        info.use_time_management = true;
+        const long long remaining = (pos.side_to_move == WHITE) ? wtime : btime;
+        const long long inc       = (pos.side_to_move == WHITE) ? winc  : binc;
+        const TimeBudget b = compute_time_budget(remaining, inc, movestogo, /*movetime=*/-1);
+        info.soft_ms = b.soft_ms;
+        info.hard_ms = b.hard_ms;
+    } else if (infinite) {
+        maxDepth = 6;   // see header comment: no async `stop` in single-threaded Phase 2
+    } else {
+        maxDepth = 6;   // bare `go`: pre-Step-9 default
+    }
+
+    const SearchResult r = search_id(pos, maxDepth, info, /*printInfo=*/true);
     std::cout << "bestmove " << (r.best != MOVE_NONE ? move_to_uci(r.best) : "0000") << std::endl;
 }
 

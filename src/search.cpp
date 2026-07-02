@@ -105,6 +105,24 @@ bool is_draw(const Position& pos, const SearchInfo& info) {
     return false;
 }
 
+// Step 9: milliseconds elapsed since the search started (search_id stamped start_time).
+long long elapsed_ms(const SearchInfo& info) {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now() - info.start_time).count();
+}
+
+// Step 9: poll the abort conditions. Called once every CHECK_NODES nodes (a power of
+// two so the test is a cheap mask). It never fires until depth 1 has completed
+// (abort_armed), which guarantees the search always returns a legal move. Sources:
+// an external `stop`, the node limit, or the hard wall-clock limit.
+constexpr std::uint64_t CHECK_NODES = 2048;
+void check_abort(SearchInfo& info) {
+    if (info.aborted || !info.abort_armed) return;
+    if (info.stop != nullptr && *info.stop)                    { info.aborted = true; return; }
+    if (info.max_nodes != 0 && info.nodes >= info.max_nodes)   { info.aborted = true; return; }
+    if (info.use_time_management && elapsed_ms(info) >= info.hard_ms) { info.aborted = true; }
+}
+
 // Record "move m + child's PV" as this node's PV (triangular copy).
 void pv_update(SearchInfo& info, int ply, Move m) {
     if (info.pv == nullptr || ply + 1 >= MAX_PLY) return;
@@ -180,6 +198,11 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     ++info.nodes;
     if (ply > info.seldepth) info.seldepth = ply;
 
+    if (info.check_time) {                       // Step 9: abort polling (no-op when off)
+        if ((info.nodes & (CHECK_NODES - 1)) == 0) check_abort(info);
+        if (info.aborted) return 0;              // sentinel — discarded by the caller
+    }
+
     if (ply >= MAX_PLY)
         return evaluate(pos);
 
@@ -226,6 +249,7 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
         make_move(pos, m);
         const int score = -qsearch(pos, -beta, -alpha, ply + 1, info);
         unmake_move(pos, m);
+        if (info.check_time && info.aborted) return best;   // bail; make/unmake balanced
 
         if (score > best) best = score;
         if (best > alpha)  alpha = best;
@@ -238,6 +262,11 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     ++info.nodes;
     if (ply > info.seldepth) info.seldepth = ply;
     if (info.pv) info.pv->length[ply] = 0;
+
+    if (info.check_time) {                       // Step 9: abort polling (no-op when off)
+        if ((info.nodes & (CHECK_NODES - 1)) == 0) check_abort(info);
+        if (info.aborted) return 0;              // sentinel — discarded by the caller
+    }
 
     MoveList ml;
     generate_legal_moves(pos, ml);
@@ -290,6 +319,7 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
         const int score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info);
         unmake_move(pos, m);
         if (info.use_draw_detection) info.rep.pop_back();
+        if (info.check_time && info.aborted) return best;   // discard; do NOT store to TT
 
         if (score > best) { best = score; bestMove = m; pv_update(info, ply, m); }
         if (best > alpha)  alpha = best;
@@ -360,6 +390,9 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
         const int score = -search(pos, depth - 1, -beta, -alpha, 1, info);
         unmake_move(pos, ml.moves[i]);
         if (info.use_draw_detection) info.rep.pop_back();
+        // Step 9: on abort, return whatever we have — search_id discards this whole
+        // (incomplete) iteration and keeps the last completed one.
+        if (info.check_time && info.aborted) return { best, bestMove };
 
         if (score > best) { best = score; bestMove = ml.moves[i]; pv_update(info, 0, ml.moves[i]); }
         if (best > alpha) alpha = best;
@@ -393,18 +426,62 @@ std::string pv_to_uci(const SearchInfo& info) {
 }
 } // namespace
 
+// Step 9 time-budget constants. MOVE_OVERHEAD is a safety margin (ms) covering the
+// gap between deciding to stop and the GUI receiving the bestmove; TIME_DIVISOR is
+// the "assume this many moves remain" fallback when movestogo is not given.
+namespace {
+constexpr long long MOVE_OVERHEAD = 10;   // ms
+constexpr long long TIME_DIVISOR  = 20;   // moves assumed remaining without movestogo
+}
+
+TimeBudget compute_time_budget(long long remaining, long long inc, int movestogo, long long movetime) {
+    if (movetime >= 0) {
+        long long t = movetime - MOVE_OVERHEAD;
+        if (t < 1) t = 1;
+        return { t, t };
+    }
+    long long rem = (remaining > 0 ? remaining : 0) - MOVE_OVERHEAD;
+    if (rem < 1) rem = 1;
+    long long base = (movestogo > 0 ? rem / movestogo : rem / TIME_DIVISOR)
+                   + (inc > 0 ? (inc * 3) / 4 : 0);
+    if (base < 1) base = 1;
+    const long long soft = base;
+    // The hard cap never exceeds half the usable time, so a game can never flag:
+    // repeatedly halving a positive bank never reaches zero.
+    long long hard = base * 3;
+    if (hard > rem / 2) hard = rem / 2;
+    if (hard < soft)    hard = soft;
+    return { soft, hard };
+}
+
 SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool printInfo) {
     SearchResult best{ 0, MOVE_NONE };
-    const auto t0 = std::chrono::steady_clock::now();
+    info.start_time      = std::chrono::steady_clock::now();
+    info.aborted         = false;
+    info.abort_armed     = false;   // depth 1 must always complete (guarantees a move)
+    info.completed_depth = 0;
 
     for (int d = 1; d <= maxDepth; ++d) {
+        // Step 9 soft limit: once we already hold a completed iteration, don't START
+        // one we almost certainly can't finish inside the budget. (Fixed-depth and
+        // node-limited searches leave use_time_management false and skip this.)
+        if (info.use_time_management && info.abort_armed && elapsed_ms(info) >= info.soft_ms)
+            break;
+
         info.seldepth = 0;
-        best = search_root(pos, d, info);
+        const SearchResult r = search_root(pos, d, info);
+
+        // Step 9 clean abort (§9): a hard-limit/stop abort discards the INCOMPLETE
+        // iteration entirely; we keep the best move from the last COMPLETED one.
+        if (info.aborted)
+            break;
+
+        best = r;
+        info.completed_depth = d;
+        info.abort_armed = true;   // depth 1 is in hand -> the hard abort may now fire
 
         if (printInfo) {
-            const auto t1 = std::chrono::steady_clock::now();
-            const long long ms =
-                std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+            const long long ms = elapsed_ms(info);
             const long long nps = (ms > 0)
                 ? static_cast<long long>(info.nodes * 1000ULL / static_cast<std::uint64_t>(ms))
                 : 0;
