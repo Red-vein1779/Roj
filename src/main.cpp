@@ -14,6 +14,7 @@
 #include "fen.h"
 #include "tt.h"
 #include "search.h"
+#include "bench.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -242,6 +243,9 @@ void uci_loop() {
             uci_position(pos, iss, gameKeys);
         } else if (token == "go") {
             uci_go(pos, tt, iss, gameKeys);
+        } else if (token == "bench") {
+            // Step 10: deterministic node signature (fixed positions/depth/TT).
+            run_bench(/*verbose=*/true);
         } else if (token == "d") {
             print_board(pos);
             std::cout << "FEN: " << fen_string(pos) << std::endl;

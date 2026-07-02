@@ -1,0 +1,58 @@
+// Roj chess engine — Phase 2, Step 10: `bench` node-signature tests.
+//
+// Maps to phase2.md Step 10 "done when" (§7 row 10, §6 bench, §12):
+//
+//  1. DETERMINISTIC: run_bench() returns the identical total node count on repeated
+//     calls in one build.
+//  2. REFERENCE SIGNATURE: that count equals the value committed in bench.cpp
+//     (Stockfish-style), so an accidental search change is caught as a changed count.
+//
+// (Rebuild stability and the sensitivity check — perturb the search, confirm the
+// number moves, revert — are demonstrated at the command level in the Step 10
+// report; the reference number is the anchor asserted here.)
+//
+// Build (one line):
+//   g++ -O3 -std=c++17 -Wall -Wextra -Wpedantic tests/test_bench.cpp src/bench.cpp src/search.cpp src/tt.cpp src/eval.cpp src/movegen.cpp src/position.cpp src/fen.cpp src/attacks.cpp src/magic.cpp src/zobrist.cpp src/bitboard.cpp -o test_bench
+
+#include "../src/bench.h"
+#include "../src/attacks.h"
+#include "../src/magic.h"
+#include "../src/zobrist.h"
+
+#include <cstdint>
+#include <iostream>
+
+using namespace roj;
+
+// The reference signature committed in src/bench.cpp. Keep the two in lock-step.
+static constexpr std::uint64_t BENCH_REFERENCE = 7948336ULL;
+
+int main() {
+    init_attack_tables();
+    init_magics();
+    init_zobrist();
+
+    const std::uint64_t a = run_bench(/*verbose=*/false);
+    const std::uint64_t b = run_bench(/*verbose=*/false);
+
+    int failures = 0;
+    if (a != b) {
+        ++failures;
+        std::cout << "  FAIL: bench not deterministic across runs: " << a << " vs " << b << "\n";
+    }
+    if (a != BENCH_REFERENCE) {
+        ++failures;
+        std::cout << "  FAIL: bench count " << a << " != reference " << BENCH_REFERENCE
+                  << " (search changed? update the reference if intentional)\n";
+    }
+
+    std::cout << "  bench nodes = " << a << " (reference " << BENCH_REFERENCE
+              << "), identical on repeat\n";
+
+    if (failures == 0) {
+        std::cout << "test_bench: ALL STEP 10 CHECKS PASS\n";
+        return 0;
+    }
+    std::cout << "test_bench: FAILURES = " << failures << "\n";
+    return 1;
+}
