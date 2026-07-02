@@ -313,6 +313,20 @@ motsvarighet till Fas 1:s noggrant spikade kantfall.
   en **Fas 2-konfiguration, inte permanent**: i Fas 3 återinförs TT-cutoffs på
   spelvägen via PVS (null-window icke-PV-noder tar fulla cutoffs; PV-noder fortsätter
   undvika dem). Styrkan får inte lämnas kvar på bordet.
+- **Single-threaded `stop`/`infinite` (Fas 2-konfiguration).** En single-threaded
+  motor kan inte läsa `stop` från stdin under en pågående sökning, och C++17 saknar
+  portabel icke-blockerande stdin. I Fas 2 faller `go infinite` och naket `go`
+  därför tillbaka på fast djup, och mitt-sök-`stop` från ett GUI är en no-op mellan
+  kommandon. Abort-*mekanismen* är fullt implementerad och testad via `stop`-pekaren.
+  Aldrig-förlora-på-tid-grinden beror **inte** på `stop` (den möts av den hårda
+  tidsgränsen). **Uppskjutet:** en asynkron input-listener-tråd (och `go infinite`
+  som söker till ply-taket) byggs när single-thread-låset släpps, tidigast kring
+  Lazy SMP / Fas 7. Krävs för korrekt GUI-/Lichess-/TCEC-beteende.
+- **Bench-djup och PV-läget (Fas 2-konfiguration).** `bench` är låst till fast
+  djup 6 för att matcha `go depth N`:s spelväg exakt, som i Fas 2 är PV-läge
+  (TT-ordning, inga cutoffs) och därför långsam på djupet. **Uppskjutet:** när Fas 3
+  återinför TT-cutoffs på spelvägen via PVS blir djupare bench billig; bench-djupet
+  höjs då och nodsignaturen om-baseline:as i samma commit.
 
 ---
 
