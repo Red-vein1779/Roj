@@ -29,6 +29,9 @@ void uci_identify() {
     std::cout << "id name " << ENGINE_NAME << ' ' << ENGINE_VERSION << '\n'
               << "id author " << ENGINE_AUTHOR << '\n'
               << "option name Hash type spin default 16 min 1 max 1024\n"
+              // Step 11: a test knob for A/B SPRT (default true = no behaviour change).
+              // Lets the harness run "quiescence on vs off" as one binary, two options.
+              << "option name Qsearch type check default true\n"
               << "uciok" << std::endl;
 }
 
@@ -115,7 +118,7 @@ void uci_position(Position& pos, std::istringstream& iss, std::vector<std::uint6
 // (fixed depth 6): a single-threaded engine cannot receive `stop` mid-search, so a
 // truly unbounded search is deferred to the async input of a later phase.
 void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
-            const std::vector<std::uint64_t>& gameKeys) {
+            const std::vector<std::uint64_t>& gameKeys, bool optQsearch) {
     long long wtime = -1, btime = -1, winc = 0, binc = 0, movetime = -1, nodes = -1;
     int movestogo = 0, depth = -1;
     bool infinite = false;
@@ -135,7 +138,7 @@ void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
     SearchInfo info;
     info.use_mvv_lva = true;
     info.use_killers_history = true;
-    info.use_qsearch = true;
+    info.use_qsearch = optQsearch;   // Step 11: A/B knob (UCI option `Qsearch`)
     info.use_delta_pruning = true;
     info.tt = &tt;
     PvTable pv;
@@ -215,6 +218,8 @@ void uci_loop() {
     TranspositionTable tt;
     tt.resize(16);   // default Hash size (Step 6); real search through `go` is Step 7
 
+    bool optQsearch = true;   // Step 11: `Qsearch` UCI option (default = normal search)
+
     std::string line;
     while (std::getline(std::cin, line)) {
         std::istringstream iss(line);
@@ -238,11 +243,13 @@ void uci_loop() {
                     const int mb = std::stoi(value);
                     if (mb >= 1) tt.resize(static_cast<std::size_t>(mb));
                 } catch (...) { /* ignore malformed value */ }
+            } else if (name == "Qsearch") {
+                optQsearch = (value == "true" || value == "1");
             }
         } else if (token == "position") {
             uci_position(pos, iss, gameKeys);
         } else if (token == "go") {
-            uci_go(pos, tt, iss, gameKeys);
+            uci_go(pos, tt, iss, gameKeys, optQsearch);
         } else if (token == "bench") {
             // Step 10: deterministic node signature (fixed positions/depth/TT).
             run_bench(/*verbose=*/true);

@@ -1,0 +1,5 @@
+# Test tools, engine binaries, opening book and game output are NOT committed
+# (they are downloaded/generated locally; see README.md). Only the harness
+# scripts + config in this directory are tracked.
+bin/
+out/
