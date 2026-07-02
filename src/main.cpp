@@ -15,9 +15,11 @@
 #include "tt.h"
 #include "search.h"
 
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace roj {
 
@@ -61,7 +63,13 @@ bool uci_matches(Move m, const std::string& s) {
 // "position [startpos | fen <6 fields>] [moves m1 m2 ...]". Rebuilt FRESH each
 // time (GUIs resend the whole game): set the base, then replay moves through the
 // legal generator so every flag is correct. Unknown/illegal input is ignored.
-void uci_position(Position& pos, std::istringstream& iss) {
+//
+// Step 8: `gameKeys` records the Zobrist key of every position actually played —
+// the base position followed by the position after each applied move — so the
+// search can detect a repetition that began BEFORE the root (§9 "Repetition och
+// pre-rot-historik"). The final entry is the current (root) position; the ones
+// before it are the pre-root history.
+void uci_position(Position& pos, std::istringstream& iss, std::vector<std::uint64_t>& gameKeys) {
     std::string token;
     if (!(iss >> token)) return;
 
@@ -76,6 +84,9 @@ void uci_position(Position& pos, std::istringstream& iss) {
         return;  // malformed
     }
 
+    gameKeys.clear();
+    gameKeys.push_back(pos.hash);   // base position
+
     if (iss >> token && token == "moves") {
         std::string mv;
         while (iss >> mv) {
@@ -85,6 +96,7 @@ void uci_position(Position& pos, std::istringstream& iss) {
             for (int i = 0; i < list.count; ++i)
                 if (uci_matches(list.moves[i], mv)) {
                     make_move(pos, list.moves[i]);
+                    gameKeys.push_back(pos.hash);
                     applied = true;
                     break;
                 }
@@ -95,7 +107,8 @@ void uci_position(Position& pos, std::istringstream& iss) {
 
 // "go [depth N]": run the iterative-deepening search to depth N (default 6; real
 // time management is Step 9) and return the real best move plus a full info trail.
-void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss) {
+void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
+            const std::vector<std::uint64_t>& gameKeys) {
     int depth = 6;
     std::string token;
     while (iss >> token) {
@@ -114,6 +127,14 @@ void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss) {
     info.tt = &tt;
     PvTable pv;
     info.pv = &pv;
+
+    // Step 8: enable draw detection and seed the repetition history with the
+    // PRE-ROOT game positions (every recorded key except the last, which is the
+    // root itself). Including the root would make it repeat itself and false-alarm.
+    info.use_draw_detection = true;
+    if (gameKeys.size() > 1)
+        info.rep.assign(gameKeys.begin(), gameKeys.end() - 1);
+    info.rep.reserve(info.rep.size() + MAX_PLY);
 
     const SearchResult r = search_id(pos, depth, info, /*printInfo=*/true);
     std::cout << "bestmove " << (r.best != MOVE_NONE ? move_to_uci(r.best) : "0000") << std::endl;
@@ -145,6 +166,11 @@ void uci_loop() {
     Position pos;
     parse_fen(pos, START_FEN);   // a sensible default before any "position"
 
+    // Step 8: pre-root game history (Zobrist keys of positions actually played).
+    // Kept in sync with `pos`: reset to the current position on a fresh base
+    // (startup / ucinewgame), rebuilt by `position`, and read by `go`.
+    std::vector<std::uint64_t> gameKeys{ pos.hash };
+
     TranspositionTable tt;
     tt.resize(16);   // default Hash size (Step 6); real search through `go` is Step 7
 
@@ -160,6 +186,7 @@ void uci_loop() {
             std::cout << "readyok" << std::endl;
         } else if (token == "ucinewgame") {
             parse_fen(pos, START_FEN);
+            gameKeys.assign(1, pos.hash);
             tt.clear();
         } else if (token == "setoption") {
             // "setoption name Hash value <MB>": (re)size the transposition table.
@@ -172,9 +199,9 @@ void uci_loop() {
                 } catch (...) { /* ignore malformed value */ }
             }
         } else if (token == "position") {
-            uci_position(pos, iss);
+            uci_position(pos, iss, gameKeys);
         } else if (token == "go") {
-            uci_go(pos, tt, iss);
+            uci_go(pos, tt, iss, gameKeys);
         } else if (token == "d") {
             print_board(pos);
             std::cout << "FEN: " << fen_string(pos) << std::endl;

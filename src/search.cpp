@@ -81,6 +81,30 @@ void clear_killers_history(SearchInfo& info) {
                 info.history[c][f][t] = 0;
 }
 
+// Step 8 draw detection: is the position at this node a draw for search purposes?
+// Covers the 50-move rule, insufficient material, and twofold repetition (the
+// current key already appears earlier along the path — pre-root history or an
+// ancestor in the tree). The no-legal-moves terminal test is done by the CALLER
+// BEFORE this, so checkmate takes precedence over the 50-move rule (§9 "50-drag mot
+// matt"). GHI (§9): repetition is a PATH-dependent property while the TT is
+// path-independent, so this check must run BEFORE the TT is probed for a score; we
+// accept residual GHI imperfection in Phase 2 (not fully solved here). The
+// repetition key is pos.hash — Phase 1's incremental Zobrist — so the en-passant
+// convention matches Phase 1 exactly (position.cpp), avoiding a false-alarming key.
+bool is_draw(const Position& pos, const SearchInfo& info) {
+    if (pos.halfmove_clock >= 100)     // 50-move rule (100 plies)
+        return true;
+    if (insufficient_material(pos))
+        return true;
+    // Twofold in tree / pre-root repetition: any single earlier occurrence of the
+    // current key is treated as a draw (a search optimisation, not the threefold
+    // game rule).
+    for (std::size_t i = 0; i < info.rep.size(); ++i)
+        if (info.rep[i] == pos.hash)
+            return true;
+    return false;
+}
+
 // Record "move m + child's PV" as this node's PV (triangular copy).
 void pv_update(SearchInfo& info, int ply, Move m) {
     if (info.pv == nullptr || ply + 1 >= MAX_PLY) return;
@@ -92,6 +116,32 @@ void pv_update(SearchInfo& info, int ply, Move m) {
 }
 
 } // namespace
+
+bool insufficient_material(const Position& pos) {
+    // Pawns, rooks and queens are always mating material.
+    if (pos.pieces[WHITE][PAWN]  | pos.pieces[BLACK][PAWN])  return false;
+    if (pos.pieces[WHITE][ROOK]  | pos.pieces[BLACK][ROOK])  return false;
+    if (pos.pieces[WHITE][QUEEN] | pos.pieces[BLACK][QUEEN]) return false;
+
+    const int wB = popcount(pos.pieces[WHITE][BISHOP]);
+    const int bB = popcount(pos.pieces[BLACK][BISHOP]);
+    const int minors = popcount(pos.pieces[WHITE][KNIGHT]) + popcount(pos.pieces[BLACK][KNIGHT])
+                     + wB + bB;
+
+    if (minors == 0) return true;   // K vs K
+    if (minors == 1) return true;   // K + single minor (KN or KB) vs K
+    // KB vs KB with both bishops on the same colour complex is a dead draw. Any
+    // other two-minor material (KNN, KBN, KB vs KN, KB vs KB opposite colours) can
+    // in principle mate, so we deliberately keep it out of the draw set (§ Step 8).
+    if (minors == 2 && wB == 1 && bB == 1) {
+        const Square ws = lsb(pos.pieces[WHITE][BISHOP]);
+        const Square bs = lsb(pos.pieces[BLACK][BISHOP]);
+        const int wColor = (file_of(ws) + rank_of(ws)) & 1;
+        const int bColor = (file_of(bs) + rank_of(bs)) & 1;
+        if (wColor == bColor) return true;
+    }
+    return false;
+}
 
 int capture_score(const Position& pos, Move m) {
     if (!is_capture(pos, m))
@@ -192,7 +242,15 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     MoveList ml;
     generate_legal_moves(pos, ml);
     if (ml.count == 0)
-        return terminal_score(pos, ply);
+        return terminal_score(pos, ply);   // mate/stalemate — precedes the 50-move draw
+
+    // Step 8: draw detection runs AFTER the terminal test (so checkmate beats the
+    // 50-move rule) and BEFORE the TT probe (GHI: a path-dependent draw must be
+    // recognised on the path before a path-independent TT score can hide it). Drawn
+    // nodes return VALUE_DRAW and are NOT stored in the TT.
+    if (info.use_draw_detection && is_draw(pos, info))
+        return VALUE_DRAW;
+
     if (depth == 0)
         return info.use_qsearch ? qsearch(pos, alpha, beta, ply, info) : evaluate(pos);
 
@@ -223,9 +281,15 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     Move bestMove = MOVE_NONE;
     for (int i = 0; i < ml.count; ++i) {
         const Move m = ml.moves[i];
+        // Push THIS node's key so the child sees it as an ancestor for repetition
+        // detection; pop after unmaking so `rep` is always balanced (returns to the
+        // seeded pre-root history). Guarded so Step 7 behaviour is untouched when
+        // draw detection is off.
+        if (info.use_draw_detection) info.rep.push_back(pos.hash);
         make_move(pos, m);
         const int score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info);
         unmake_move(pos, m);
+        if (info.use_draw_detection) info.rep.pop_back();
 
         if (score > best) { best = score; bestMove = m; pv_update(info, ply, m); }
         if (best > alpha)  alpha = best;
@@ -262,6 +326,14 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
     generate_legal_moves(pos, ml);
     if (ml.count == 0)
         return { terminal_score(pos, 0), MOVE_NONE };
+
+    // Step 8: if the root position is itself already a draw — its key repeats a
+    // pre-root game position (seeded in info.rep), the 50-move clock is full, or
+    // material is insufficient — report VALUE_DRAW with a legal move. Mate
+    // precedence is preserved because the no-legal-moves test above ran first.
+    if (info.use_draw_detection && is_draw(pos, info))
+        return { VALUE_DRAW, ml.moves[0] };
+
     if (depth == 0)
         return { info.use_qsearch ? qsearch(pos, -VALUE_INFINITE, VALUE_INFINITE, 0, info)
                                   : evaluate(pos), MOVE_NONE };
@@ -283,9 +355,11 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
     const int beta = VALUE_INFINITE;
 
     for (int i = 0; i < ml.count; ++i) {
+        if (info.use_draw_detection) info.rep.push_back(pos.hash);   // root key is an ancestor
         make_move(pos, ml.moves[i]);
         const int score = -search(pos, depth - 1, -beta, -alpha, 1, info);
         unmake_move(pos, ml.moves[i]);
+        if (info.use_draw_detection) info.rep.pop_back();
 
         if (score > best) { best = score; bestMove = ml.moves[i]; pv_update(info, 0, ml.moves[i]); }
         if (best > alpha) alpha = best;

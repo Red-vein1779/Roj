@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace roj {
 
@@ -48,6 +49,22 @@ struct SearchInfo {
 
     TranspositionTable* tt = nullptr;
     bool tt_tripwire = false;
+
+    // Step 8: draw detection. When set, the search returns VALUE_DRAW on twofold
+    // repetition (along the search path AND the pre-root game history), the 50-move
+    // rule, and insufficient material. Default OFF so Steps 2-7 behaviour (and the
+    // minimax oracle equivalence) is byte-for-byte unchanged when it is not asked
+    // for; the `go` play path turns it on.
+    bool use_draw_detection = false;
+
+    // Repetition path for draw detection. Seed `rep` with the PRE-ROOT game keys
+    // (the positions actually played before the root, via `position ... moves ...`)
+    // BEFORE searching; the search then pushes each node's key as it descends and
+    // pops on the way back up. A node whose key already appears in `rep` is a
+    // repetition (twofold in the tree, or a repeat of a pre-root position). The key
+    // stored here is `pos.hash` — Phase 1's incremental Zobrist — so the en-passant
+    // convention is exactly Phase 1's (position.cpp), as phase2.md §9 requires.
+    std::vector<std::uint64_t> rep;
 
     // Step 7: when set, the search collects the PV here AND uses the TT for move
     // ordering ONLY (no TT cutoffs), so the PV is complete and the score is
@@ -85,6 +102,12 @@ void update_history(SearchInfo& info, Color side, Move m, int depth);
 
 // UCI score field: "mate N" (section 4 mate convention) or "cp X". Exposed for tests.
 std::string score_to_uci(int score);
+
+// Step 8: true iff neither side has enough material to force mate — the standard
+// dead-draw cases K vs K, K+single minor (KN or KB) vs K, and KB vs KB with both
+// bishops on the same colour complex. Path-independent, so safe to test at any
+// node. Exposed for tests.
+bool insufficient_material(const Position& pos);
 
 } // namespace roj
 
