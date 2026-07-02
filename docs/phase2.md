@@ -293,6 +293,15 @@ motsvarighet till Fas 1:s noggrant spikade kantfall.
 - **Killer/history-hygien.** Två killers per ply, korrekt rensade/åldrade mellan
   sökningar; history-tabellen (indexerad per `[side][from][to]`) halveras/åldras
   så den inte spiller över.
+- **PV-läget och TT-cutoffs (Fas 2-konfiguration).** Den PV-samlande ID-sökningen
+  (den `go` använder) tar TT:n för *dragordning* men **inte för värde-cutoffs**:
+  fail-soft-cutoffs skulle trunkera den triangulära PV:n och göra en varm-TT ID(N)
+  skild från en kall direkt djup-N (samma fail-soft-effekt som §8 beskriver). Att
+  avstå cutoffs i PV-läget ger exakt `ID(N) == direkt djup-N` och kompletta PV:er.
+  TT-cutoffs är **på** i det icke-PV-läge som TT-invarianten (§8) testar. Detta är
+  en **Fas 2-konfiguration, inte permanent**: i Fas 3 återinförs TT-cutoffs på
+  spelvägen via PVS (null-window icke-PV-noder tar fulla cutoffs; PV-noder fortsätter
+  undvika dem). Styrkan får inte lämnas kvar på bordet.
 
 ---
 
