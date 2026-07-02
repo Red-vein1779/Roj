@@ -13,6 +13,7 @@
 #include "movegen.h"
 #include "fen.h"
 #include "tt.h"
+#include "search.h"
 
 #include <iostream>
 #include <sstream>
@@ -92,16 +93,30 @@ void uci_position(Position& pos, std::istringstream& iss) {
     }
 }
 
-// "go": play the FIRST legal move (deterministic; real search is Phase 2). Any
-// arguments are ignored. No legal moves (mate/stalemate) -> "bestmove 0000".
-void uci_go(Position& pos) {
-    MoveList list;
-    generate_legal_moves(pos, list);
-    if (list.count == 0) {
-        std::cout << "bestmove 0000" << std::endl;
-        return;
+// "go [depth N]": run the iterative-deepening search to depth N (default 6; real
+// time management is Step 9) and return the real best move plus a full info trail.
+void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss) {
+    int depth = 6;
+    std::string token;
+    while (iss >> token) {
+        if (token == "depth")
+            iss >> depth;
+        // other "go" parameters (wtime/btime/movetime/...) are ignored until Step 9
     }
-    std::cout << "bestmove " << move_to_uci(list.moves[0]) << std::endl;
+    if (depth < 1) depth = 1;
+    if (depth > MAX_PLY - 1) depth = MAX_PLY - 1;
+
+    SearchInfo info;
+    info.use_mvv_lva = true;
+    info.use_killers_history = true;
+    info.use_qsearch = true;
+    info.use_delta_pruning = true;
+    info.tt = &tt;
+    PvTable pv;
+    info.pv = &pv;
+
+    const SearchResult r = search_id(pos, depth, info, /*printInfo=*/true);
+    std::cout << "bestmove " << (r.best != MOVE_NONE ? move_to_uci(r.best) : "0000") << std::endl;
 }
 
 // "d": piece grid (rank 8 on top, a-file left) + FEN, to eyeball a position.
@@ -159,7 +174,7 @@ void uci_loop() {
         } else if (token == "position") {
             uci_position(pos, iss);
         } else if (token == "go") {
-            uci_go(pos);
+            uci_go(pos, tt, iss);
         } else if (token == "d") {
             print_board(pos);
             std::cout << "FEN: " << fen_string(pos) << std::endl;
