@@ -286,8 +286,19 @@ motsvarighet till Fas 1:s noggrant spikade kantfall.
   remi (en sökoptimering; inte trefaldig). Pre-rot-historiken — de faktiska
   partistegen via `position startpos moves ...` — måste matas in så att en
   repetition som *började före roten* fångas.
-- **EP-konvention.** Den måste vara *exakt samma* som Fas 1:s när repetitionen
-  nycklas, annars larmar invarianten falskt (samma anteckning som i phase1.md §9).
+- **EP-konvention (löst: nycklas via `pos.hash`).** Repetition nycklas med
+  `pos.hash` — Fas 1:s *faktiska* Zobrist, som hashar EP-filen närhelst ett
+  `ep_square` finns (always-if-exists), utan capturability-kontroll. Det håller
+  repetitionsnyckeln *identisk* med TT-nyckeln och den inkrementella hashen.
+  Konsekvens: den kan bara *missa* en repetition i det sällsynta fall där ett
+  icke-slagbart fantom-EP-fält skiljer två annars identiska ställningar — den kan
+  **aldrig** ge en falsk remi. Det är exakt den residual-imperfektion phase1.md §9
+  förutsåg. **Uppskjutet (klargörande som ersätter phase1.md §9:s framåtnotis):**
+  den capturability-medvetna förfiningen (räkna EP som särskiljande endast när
+  slaget faktiskt är möjligt) görs *inte* i Fas 2 — den är en dokumenterad,
+  separerbar uppföljning i samma kategori som GHI, och tas upp när det spelar roll
+  (TCEC-nivå). Görs den, måste den byggas som en *parallell* repetitionshash så att
+  TT- och perft-Zobrist-invarianterna inte rubbas.
 - **50-drag mot matt.** Är halvdragsräknaren ≥ 100 men sidan är matt, har matten
   företräde — kontrollera matt före remi-beslutet.
 - **Killer/history-hygien.** Två killers per ply, korrekt rensade/åldrade mellan
