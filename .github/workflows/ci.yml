@@ -1,0 +1,46 @@
+# Roj CI gate (Phase 3 Step 0, phase3.md §3 decision 11).
+# Job 1: the Phase 1 ASan+UBSan perft sanitizer driver, exactly as phase1.md §9
+#        specifies — the first sanitizer diagnostic gives a nonzero exit and
+#        fails the job (-fno-sanitize-recover=all).
+# Job 2: the canonical release build (warnings promoted to errors in CI ONLY;
+#        the canonical local build stays warning-flag-clean without -Werror),
+#        then the bench node signature compared against tests/bench.expected.
+#        Re-baselining a signature is a one-line diff of that file.
+name: CI
+
+on: [push]
+
+jobs:
+  sanitizer-perft:
+    name: sanitizer gate (ASan+UBSan perft)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiler version
+        run: g++ --version
+      - name: Build sanitizer perft driver (phase1.md §9)
+        run: >
+          g++ -O1 -g -std=c++17 -fsanitize=address,undefined
+          -fno-sanitize-recover=all -fno-omit-frame-pointer
+          tests/perft_sanitize.cpp
+          src/perft.cpp src/movegen.cpp src/position.cpp src/fen.cpp
+          src/attacks.cpp src/magic.cpp src/zobrist.cpp
+          -o perft_sanitize
+      - name: Run sanitizer gate
+        run: ./perft_sanitize
+
+  release-bench:
+    name: release build + bench signature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiler version
+        run: g++ --version
+      - name: Release build (zero warnings, -Werror in CI only)
+        run: g++ -O3 -std=c++17 -Wall -Wextra -Wpedantic -Werror src/*.cpp -o Roj
+      - name: Bench signature vs committed reference
+        run: |
+          expected=$(tr -d '[:space:]' < tests/bench.expected)
+          actual=$(printf 'bench\nquit\n' | ./Roj | sed -n 's/^Nodes searched: //p' | tr -d '[:space:]')
+          echo "expected=$expected actual=$actual"
+          test -n "$actual" && test "$actual" = "$expected"
