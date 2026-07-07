@@ -67,11 +67,24 @@ struct SearchInfo {
     // convention is exactly Phase 1's (position.cpp), as phase2.md §9 requires.
     std::vector<std::uint64_t> rep;
 
-    // Step 7: when set, the search collects the PV here AND uses the TT for move
-    // ordering ONLY (no TT cutoffs), so the PV is complete and the score is
-    // order-invariant (ID(N) == a direct depth-N search). When null, Steps 2-6
-    // behaviour is unchanged (full TT cutoffs, no PV).
+    // Step 7: when set, the search collects the PV here. Phase 2 rule (use_pvs
+    // false): the whole PV-collecting path uses the TT for move ordering ONLY (no
+    // TT cutoffs), so the PV is complete and the score is order-invariant
+    // (ID(N) == a direct depth-N search). Phase 3 rule (use_pvs true): only PV
+    // NODES forgo TT value cutoffs; null-window (non-PV) nodes take full cutoffs.
     PvTable* pv = nullptr;
+
+    // Phase 3 Step 1: PVS (phase3.md §3 decisions 2/4, §8). ON: the first move at
+    // each node is searched with the full window at full depth; every later move
+    // is probed with a null window [alpha, alpha+1] as a NON-PV child (non-PV
+    // nodes take full TT value cutoffs), with a full-window full-depth re-search
+    // when the probe fails high and a wider window exists (§8 re-search cascade).
+    // PV nodes keep the Phase 2 lock: TT for move ordering only, never value
+    // cutoffs, so the triangular PV stays complete. OFF: exactly the Phase 2
+    // search — every move full window, cutoffs governed by info.pv == nullptr.
+    // Default false so every Phase 2 test keeps byte-for-byte behaviour; the play
+    // path (`go`, temporary UCI option "PVS") and bench turn it on.
+    bool use_pvs = false;
 
     // Step 9: time management + abortable search. `check_time` is the master switch
     // for ALL of this: when it is false (fixed-depth `go depth N`, the minimax
@@ -92,7 +105,11 @@ struct SearchInfo {
     int           completed_depth     = 0;       // deepest fully-completed iteration
 };
 
-// Fail-soft negamax alpha-beta at fixed `depth`.
+// Fail-soft negamax alpha-beta at fixed `depth`. `pv_node` is the node type for
+// the PVS / TT-cutoff logic (Phase 3 Step 1): PV nodes never take TT value
+// cutoffs; null-window children are searched as non-PV. The 6-argument overload
+// derives the Phase 2 rule (every node on the PV-collecting path is PV).
+int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info, bool pv_node);
 int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info);
 
 // Root wrapper at the FULL window (exact minimax value), tracking the best move.

@@ -25,7 +25,9 @@
 using namespace roj;
 
 // The reference signature committed in src/bench.cpp. Keep the two in lock-step.
-static constexpr std::uint64_t BENCH_REFERENCE = 7948336ULL;
+// Phase 3 Step 1: re-baselined for PVS (depth unchanged at 6, phase3.md §3.3 as
+// amended); the Phase 2 signature at this depth was 7948336.
+static constexpr std::uint64_t BENCH_REFERENCE = 4643314ULL;
 
 int main() {
     init_attack_tables();

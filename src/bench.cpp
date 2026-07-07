@@ -19,16 +19,17 @@ namespace {
 
 // Fixed parameters. Changing any of these changes the signature, so they are pinned
 // here and never derived from UCI options or the environment. Depth 6 in the `go`
-// play configuration (PV mode: TT for ordering only, no cutoffs — see search.h) runs
-// the suite in a few seconds; deeper PV-mode searches are much slower because the
-// play path deliberately forgoes TT cutoffs in Phase 2.
+// play configuration (Phase 3 Step 1: PVS, TT value cutoffs at non-PV nodes) runs
+// the suite in ~2 s. The depth raise is DEFERRED to after Block B's LTC regression
+// (phase3.md §3 decision 3 as amended): PVS alone cuts nodes, but the effective
+// branching factor is set by the Block B pruners, so deeper bench is not yet cheap.
 constexpr int BENCH_DEPTH   = 6;    // fixed search depth per position
 constexpr int BENCH_HASH_MB = 16;   // fixed TT size (independent of the `Hash` option)
 
 // REFERENCE SIGNATURE (commit this, Stockfish-style): with the positions, depth, TT
 // size and search configuration below, run_bench() returns exactly:
 //
-//     Nodes searched: 7948336
+//     Nodes searched: 4643314
 //
 // This number is deterministic across runs, rebuilds and platforms (fixed depth,
 // fixed positions, integer-only search, TT cluster count derived from a fixed byte
@@ -83,6 +84,7 @@ std::uint64_t run_bench(bool verbose) {
         info.use_qsearch = true;
         info.use_delta_pruning = true;
         info.use_draw_detection = true;
+        info.use_pvs = true;             // Phase 3 Step 1: the play path is PVS
         info.tt = &tt;
         info.pv = &pv;
 

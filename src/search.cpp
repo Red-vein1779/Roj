@@ -258,7 +258,7 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
     return best;
 }
 
-int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info) {
+int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info, bool pv_node) {
     ++info.nodes;
     if (ply > info.seldepth) info.seldepth = ply;
     if (info.pv) info.pv->length[ply] = 0;
@@ -287,15 +287,21 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
 
     // TT probe (before moving). GHI (section 9): no draw scores stored yet
     // (Step 8); repetition must be detected on the path before trusting a TT draw.
-    // TT CUTOFFS are taken only when NOT collecting a PV (info.pv == nullptr); in
-    // PV mode the TT is used for move ordering only, so the PV is complete and the
-    // score is order-invariant.
+    // TT VALUE CUTOFFS (Phase 3 Step 1, phase3.md §3 decision 2): with PVS on,
+    // non-PV nodes take full cutoffs; PV nodes keep the Phase 2 lock — TT for
+    // move ordering ONLY, never value cutoffs — so the triangular PV stays
+    // complete and legal. With PVS off this is exactly the Phase 2 condition:
+    // cutoffs only on the non-PV-collecting path (info.pv == nullptr). The TT
+    // move is used for ordering in BOTH node types; legality is enforced
+    // structurally because it is only matched against the freshly generated
+    // legal move list (a colliding key can bias ordering, never inject a move).
     Move ttMove = MOVE_NONE;
     if (info.tt != nullptr) {
         TTEntry e;
         if (info.tt->probe(pos.hash, e)) {
             ttMove = e.move;
-            if (info.pv == nullptr && e.depth >= depth) {
+            const bool tt_cutoffs = info.use_pvs ? !pv_node : (info.pv == nullptr);
+            if (tt_cutoffs && e.depth >= depth) {
                 const int s = value_from_tt(e.score, ply);
                 if (e.bound == BOUND_EXACT) return s;
                 if (e.bound == BOUND_LOWER && s >= beta) return s;
@@ -316,7 +322,28 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
         // draw detection is off.
         if (info.use_draw_detection) info.rep.push_back(pos.hash);
         make_move(pos, m);
-        const int score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info);
+        int score;
+        if (!info.use_pvs || i == 0) {
+            // First move (or PVS off): full window, full depth. With PVS on the
+            // first move inherits this node's type — it is the presumed-best line.
+            score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info, pv_node);
+        } else {
+            // PVS probe (phase3.md §8 "re-search-kaskaden"): every later move is
+            // searched with a null window [alpha, alpha+1] as a NON-PV child
+            // (full TT value cutoffs). Step 5 (LMR) will slot a reduced-depth
+            // stage in FRONT of this probe:
+            //   reduced null-window -> fail-high => unreduced null-window
+            //   -> fail-high => full window (the re-search below).
+            score = -search(pos, depth - 1, -alpha - 1, -alpha, ply + 1, info, false);
+            // Re-search condition: the probe failed high (score > alpha) AND a
+            // wider window exists to re-search into (beta - alpha > 1 — at a
+            // null-window node the probe window IS the full window, so nothing
+            // can be widened). Full window, full depth, this node's type, so a
+            // PV re-search collects the complete triangular PV. Skipped when the
+            // probe was aborted (its score is a discarded sentinel).
+            if (score > alpha && beta - alpha > 1 && !(info.check_time && info.aborted))
+                score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info, pv_node);
+        }
         unmake_move(pos, m);
         if (info.use_draw_detection) info.rep.pop_back();
         if (info.check_time && info.aborted) return best;   // discard; do NOT store to TT
@@ -384,10 +411,19 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
     int  alpha    = -VALUE_INFINITE;
     const int beta = VALUE_INFINITE;
 
+    const bool root_pv = (info.pv != nullptr);   // the root inherits the path's type
     for (int i = 0; i < ml.count; ++i) {
         if (info.use_draw_detection) info.rep.push_back(pos.hash);   // root key is an ancestor
         make_move(pos, ml.moves[i]);
-        const int score = -search(pos, depth - 1, -beta, -alpha, 1, info);
+        int score;
+        if (!info.use_pvs || i == 0) {
+            score = -search(pos, depth - 1, -beta, -alpha, 1, info, root_pv);
+        } else {
+            // Root PVS: the same probe/re-search cascade as in search() (§8).
+            score = -search(pos, depth - 1, -alpha - 1, -alpha, 1, info, false);
+            if (score > alpha && beta - alpha > 1 && !(info.check_time && info.aborted))
+                score = -search(pos, depth - 1, -beta, -alpha, 1, info, root_pv);
+        }
         unmake_move(pos, ml.moves[i]);
         if (info.use_draw_detection) info.rep.pop_back();
         // Step 9: on abort, return whatever we have — search_id discards this whole
@@ -496,6 +532,12 @@ SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool print
         }
     }
     return best;
+}
+
+// Node type when the caller does not say (Phase 2 rule, and every existing test):
+// the whole PV-collecting path is PV, everything else is not.
+int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& info) {
+    return search(pos, depth, alpha, beta, ply, info, info.pv != nullptr);
 }
 
 // --- Step 2/3 convenience overloads (ordering OFF, quiescence OFF, no TT) -----
