@@ -26,8 +26,10 @@ using namespace roj;
 
 // The reference signature committed in src/bench.cpp. Keep the two in lock-step.
 // Phase 3 Step 1: re-baselined for PVS (depth unchanged at 6, phase3.md §3.3 as
-// amended); the Phase 2 signature at this depth was 7948336.
-static constexpr std::uint64_t BENCH_REFERENCE = 4643314ULL;
+// amended); the Phase 2 signature at this depth was 7948336, Step 1's 4643314.
+// Phase 3 Step 2: aspiration windows on the play path — same-depth widening
+// re-searches change the fixed-depth node count (+2.2%).
+static constexpr std::uint64_t BENCH_REFERENCE = 4746412ULL;
 
 int main() {
     init_attack_tables();

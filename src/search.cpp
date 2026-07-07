@@ -369,7 +369,7 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     return best;
 }
 
-SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
+SearchResult search_root(Position& pos, int depth, SearchInfo& info, int alphaIn, int betaIn) {
     if (info.use_killers_history)
         clear_killers_history(info);
 
@@ -405,8 +405,9 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
 
     int  best     = -VALUE_INFINITE;
     Move bestMove = MOVE_NONE;
-    int  alpha    = -VALUE_INFINITE;
-    const int beta = VALUE_INFINITE;
+    int  alpha    = alphaIn;
+    const int beta = betaIn;
+    const int alpha_orig = alphaIn;
 
     const bool root_pv = (info.pv != nullptr);   // the root inherits the path's type
     for (int i = 0; i < ml.count; ++i) {
@@ -431,10 +432,22 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
         if (best > alpha) alpha = best;
     }
 
-    if (info.tt != nullptr)
+    // Phase 3 Step 2: with an aspiration window the root result can be a BOUND,
+    // not an exact value — store the bound type accordingly (a fail-low/high
+    // stored as EXACT would poison non-PV cutoffs at transposed nodes). At the
+    // full window this is always EXACT, exactly as before.
+    if (info.tt != nullptr) {
+        const Bound b = (best <= alpha_orig) ? BOUND_UPPER
+                      : (best >= beta)       ? BOUND_LOWER
+                                             : BOUND_EXACT;
         info.tt->store(pos.hash, bestMove, static_cast<std::int16_t>(value_to_tt(best, 0)),
-                       static_cast<std::int16_t>(depth), BOUND_EXACT);
+                       static_cast<std::int16_t>(depth), b);
+    }
     return { best, bestMove };
+}
+
+SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
+    return search_root(pos, depth, info, -VALUE_INFINITE, VALUE_INFINITE);
 }
 
 std::string score_to_uci(int score) {
@@ -487,6 +500,25 @@ TimeBudget compute_time_budget(long long remaining, long long inc, int movestogo
     return { soft, hard };
 }
 
+// Phase 3 Step 2: aspiration-window parameters (our own values, tuned by SPRT).
+// From ASPIRATION_MIN_DEPTH on, an iteration opens with the window
+// [prev - DELTA, prev + DELTA] around the previous iteration's score. A
+// fail-low/high widens ONLY the failed bound, re-centred on the failing score,
+// with DELTA doubling each attempt (exponential widening); once DELTA exceeds
+// ASPIRATION_DELTA_CAP — or a mate score turns up mid-widening — the iteration
+// falls back to the FULL window. Mate-zone guard (phase3.md §8): if the
+// PREVIOUS score is already in the mate zone, the iteration opens full-window
+// directly (aspirating around a mate distance is pointless and bug-prone).
+namespace {
+constexpr int ASPIRATION_MIN_DEPTH = 4;    // aspire from this iteration depth on
+constexpr int ASPIRATION_DELTA     = 25;   // initial half-width (cp)
+constexpr int ASPIRATION_DELTA_CAP = 400;  // widen past this -> full window
+
+bool in_mate_zone(int score) {
+    return score >= VALUE_MATE_IN_MAX_PLY || score <= VALUE_MATED_IN_MAX_PLY;
+}
+} // namespace
+
 SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool printInfo) {
     SearchResult best{ 0, MOVE_NONE };
     info.start_time      = std::chrono::steady_clock::now();
@@ -502,7 +534,33 @@ SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool print
             break;
 
         info.seldepth = 0;
-        const SearchResult r = search_root(pos, d, info);
+        SearchResult r{ 0, MOVE_NONE };
+        if (info.use_aspiration && d >= ASPIRATION_MIN_DEPTH
+            && info.completed_depth == d - 1 && !in_mate_zone(best.score)) {
+            int delta = ASPIRATION_DELTA;
+            int alpha = best.score - delta;
+            int beta  = best.score + delta;
+            for (;;) {
+                r = search_root(pos, d, info, alpha, beta);
+                if (info.aborted) break;                    // discarded below, as before
+                const bool failLow  = r.score <= alpha;
+                const bool failHigh = r.score >= beta;
+                if (!failLow && !failHigh) break;           // bracketed: exact result
+                delta *= 2;
+                if (delta > ASPIRATION_DELTA_CAP || in_mate_zone(r.score)) {
+                    r = search_root(pos, d, info, -VALUE_INFINITE, VALUE_INFINITE);
+                    break;                                  // full-window fallback
+                }
+                if (failLow)  alpha = r.score - delta;      // widen/re-centre the failed bound
+                else          beta  = r.score + delta;
+            }
+        } else {
+            r = search_root(pos, d, info, -VALUE_INFINITE, VALUE_INFINITE);
+        }
+        // NOTE (`info` correctness): widening re-searches happen INSIDE this
+        // iteration; the single `info` line below is printed only after the
+        // iteration has converged, so no duplicate or bound-crossed lines reach
+        // the GUI mid-widening.
 
         // Step 9 clean abort (§9): a hard-limit/stop abort discards the INCOMPLETE
         // iteration entirely; we keep the best move from the last COMPLETED one.
