@@ -6,10 +6,12 @@
 //  2. NODE-COUNT REDUCTION (quiescence ON): killers+history reduce total nodes
 //     across the suite, identical score per position. (Phase 3 Step 1 amendment:
 //     with PVS unconditional, a killer-induced reordering can occasionally COST
-//     nodes on a single position — a different null-window probe pattern
-//     triggers extra re-searches — so the Phase 2 per-position "ON <= OFF" claim
-//     is too strong; the benefit is asserted in AGGREGATE, and the technique's
-//     Elo value is SPRT-measured.)
+//     nodes on a single position. Traced on P6 (d4, ON=17886 vs OFF=17253):
+//     the excess sits in the null-window PROBES themselves — a reordered,
+//     locally worse first move weakens the probe bound for the remaining moves
+//     — NOT in the re-search cascade (ON re-searched LESS: 12 vs 14). So the
+//     Phase 2 per-position "ON <= OFF" claim is too strong under PVS; the
+//     benefit is asserted in AGGREGATE, and the Elo value is SPRT-measured.)
 //  3. UNIT: killer store/shift + no-dup; quiet cutoff stores a killer, capture
 //     cutoff does not; history increment + bounded aging; between-search hygiene.
 //
