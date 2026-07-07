@@ -15,7 +15,7 @@ jobs:
     name: sanitizer gate (ASan+UBSan perft)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compiler version
         run: g++ --version
       - name: Build sanitizer perft driver (phase1.md §9)
@@ -33,7 +33,7 @@ jobs:
     name: release build + bench signature
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compiler version
         run: g++ --version
       - name: Release build (zero warnings, -Werror in CI only)

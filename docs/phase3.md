@@ -1,6 +1,6 @@
 # Roj — Fas 3: Sökningsoptimering
 
-**Status: UTKAST — låses efter granskning.** När detta dokument låses är det
+**Status: LÅST.** När detta dokument låses är det
 den slutgiltiga kartan för Fas 3. Den ändras bara om en konkret lucka
 identifieras — och i så fall uppdateras dokumentet *innan* implementationen
 fortsätter. Kartan är kompassen. Fas 1:s nordstjärna var perft; Fas 2:s var
@@ -141,7 +141,7 @@ dess två *användningar* (steg 7 och 8).
 11. **CI-grinden byggs i steg 0** (GitHub Actions, `ubuntu-latest`): kör
     ASan+UBSan-perft-grinden och `bench`-signaturkontrollen vid varje push.
     Uppskjuten från Fas 2; en fas full av sökändringar är exakt när den
-    behövs. *(Arkitektens tillägg — stryks vid låsning om det inte godkänns.)*
+    behövs.
 
 ---
 
