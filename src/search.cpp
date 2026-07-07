@@ -287,12 +287,10 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
 
     // TT probe (before moving). GHI (section 9): no draw scores stored yet
     // (Step 8); repetition must be detected on the path before trusting a TT draw.
-    // TT VALUE CUTOFFS (Phase 3 Step 1, phase3.md §3 decision 2): with PVS on,
-    // non-PV nodes take full cutoffs; PV nodes keep the Phase 2 lock — TT for
-    // move ordering ONLY, never value cutoffs — so the triangular PV stays
-    // complete and legal. With PVS off this is exactly the Phase 2 condition:
-    // cutoffs only on the non-PV-collecting path (info.pv == nullptr). The TT
-    // move is used for ordering in BOTH node types; legality is enforced
+    // TT VALUE CUTOFFS (Phase 3 Step 1, phase3.md §3 decision 2): non-PV nodes
+    // take full cutoffs; PV nodes keep the Phase 2 lock — TT for move ordering
+    // ONLY, never value cutoffs — so the triangular PV stays complete and legal.
+    // The TT move is used for ordering in BOTH node types; legality is enforced
     // structurally because it is only matched against the freshly generated
     // legal move list (a colliding key can bias ordering, never inject a move).
     Move ttMove = MOVE_NONE;
@@ -300,8 +298,7 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
         TTEntry e;
         if (info.tt->probe(pos.hash, e)) {
             ttMove = e.move;
-            const bool tt_cutoffs = info.use_pvs ? !pv_node : (info.pv == nullptr);
-            if (tt_cutoffs && e.depth >= depth) {
+            if (!pv_node && e.depth >= depth) {
                 const int s = value_from_tt(e.score, ply);
                 if (e.bound == BOUND_EXACT) return s;
                 if (e.bound == BOUND_LOWER && s >= beta) return s;
@@ -323,9 +320,9 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
         if (info.use_draw_detection) info.rep.push_back(pos.hash);
         make_move(pos, m);
         int score;
-        if (!info.use_pvs || i == 0) {
-            // First move (or PVS off): full window, full depth. With PVS on the
-            // first move inherits this node's type — it is the presumed-best line.
+        if (i == 0) {
+            // First move: full window, full depth, inheriting this node's type —
+            // it is the presumed-best line.
             score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info, pv_node);
         } else {
             // PVS probe (phase3.md §8 "re-search-kaskaden"): every later move is
@@ -416,7 +413,7 @@ SearchResult search_root(Position& pos, int depth, SearchInfo& info) {
         if (info.use_draw_detection) info.rep.push_back(pos.hash);   // root key is an ancestor
         make_move(pos, ml.moves[i]);
         int score;
-        if (!info.use_pvs || i == 0) {
+        if (i == 0) {
             score = -search(pos, depth - 1, -beta, -alpha, 1, info, root_pv);
         } else {
             // Root PVS: the same probe/re-search cascade as in search() (§8).

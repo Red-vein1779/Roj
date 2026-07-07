@@ -84,7 +84,6 @@ std::uint64_t run_bench(bool verbose) {
         info.use_qsearch = true;
         info.use_delta_pruning = true;
         info.use_draw_detection = true;
-        info.use_pvs = true;             // Phase 3 Step 1: the play path is PVS
         info.tt = &tt;
         info.pv = &pv;
 

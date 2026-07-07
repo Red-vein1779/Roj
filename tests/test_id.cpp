@@ -1,8 +1,15 @@
 // Roj chess engine — Phase 2, Step 7: iterative deepening + PV + info tests.
 //
-// Maps to phase2.md Step 7 "done when":
-//  1. ID CONSISTENCY: final ID iteration to depth N == a direct depth-N search
-//     (score and best move), depths 1..5 on the Step 2 suite.
+// Maps to phase2.md Step 7 "done when", AS AMENDED by Phase 3 Step 1 sign-off:
+//  1. ID DETERMINISM (phase3.md §2.1 point 1): same binary + Hash + position +
+//     fixed depth => identical score, best move and node count, run after run,
+//     depths 1..5 on the Step 2 suite. Depth 1 keeps the exact "ID == direct"
+//     anchor (a single iteration from a cleared TT has no history to differ by).
+//     The Phase 2 identity "final ID iteration == direct depth-N" was a
+//     documented Phase 2 CONFIGURATION (phase2.md §9: the PV path took no TT
+//     value cutoffs) and died by design when PVS restored TT cutoffs at non-PV
+//     nodes — a warm-TT iteration may legally short-circuit with fail-soft
+//     values stored by earlier iterations.
 //  2. PV VALIDITY: the reported PV is fully legal from the root, its first move is
 //     the best move, and a forced-mate PV ends in checkmate.
 //  3. MATE REPORTING: score_to_uci maps mate scores to "mate N" with correct sign;
@@ -54,18 +61,8 @@ static void configure(SearchInfo& info, TranspositionTable* tt, PvTable* pv) {
     info.tt = tt; info.pv = pv;
 }
 
-// Game-theoretic value of playing m (no TT -> order-invariant), for tie checks.
-static int root_value(const char* fen, Move m, int depth) {
-    Position p; parse_fen(p, fen);
-    make_move(p, m);
-    SearchInfo info; configure(info, nullptr, nullptr);
-    const int v = -search(p, depth - 1, -VALUE_INFINITE, VALUE_INFINITE, 1, info);
-    unmake_move(p, m);
-    return v;
-}
-
-// ---- 1. ID consistency -------------------------------------------------------
-static void test_id_consistency(TranspositionTable& ttA, TranspositionTable& ttB,
+// ---- 1. ID determinism (phase3.md §2.1 point 1) --------------------------------
+static void test_id_determinism(TranspositionTable& ttA, TranspositionTable& ttB,
                                 PvTable& pvA, PvTable& pvB) {
     int mismatches = 0;
     for (const char* fen : STEP2_FENS)
@@ -73,27 +70,37 @@ static void test_id_consistency(TranspositionTable& ttA, TranspositionTable& ttB
             Position pa; parse_fen(pa, fen);
             ttA.clear();
             SearchInfo ia; configure(ia, &ttA, &pvA);
-            const SearchResult idr = search_id(pa, depth, ia, false);
+            const SearchResult ra = search_id(pa, depth, ia, false);
 
             Position pb; parse_fen(pb, fen);
             ttB.clear();
             SearchInfo ib; configure(ib, &ttB, &pvB);
-            const SearchResult dir = search_root(pb, depth, ib);
+            const SearchResult rb = search_id(pb, depth, ib, false);
 
-            if (idr.score != dir.score) {
+            if (ra.score != rb.score || ra.best != rb.best || ia.nodes != ib.nodes) {
                 ++mismatches; ++g_failures;
-                std::cout << "  FAIL id-consistency [" << fen << "] d" << depth
-                          << ": id=" << idr.score << " direct=" << dir.score << "\n";
+                std::cout << "  FAIL id-determinism [" << fen << "] d" << depth
+                          << ": score " << ra.score << "/" << rb.score
+                          << " move " << move_to_uci(ra.best) << "/" << move_to_uci(rb.best)
+                          << " nodes " << ia.nodes << "/" << ib.nodes << "\n";
             }
-            if (idr.best != dir.best) {
-                const int vi = root_value(fen, idr.best, depth);
-                const int vd = root_value(fen, dir.best, depth);
-                check(vi == idr.score && vd == idr.score,
-                      std::string("ID/direct best differ but both optimal [") + fen + "]");
+            // Depth 1: ID collapses to a single iteration from a cleared TT, so
+            // the old exact identity with a direct search still must hold.
+            if (depth == 1) {
+                Position pc; parse_fen(pc, fen);
+                ttB.clear();
+                SearchInfo ic; configure(ic, &ttB, &pvB);
+                const SearchResult rd = search_root(pc, 1, ic);
+                if (ra.score != rd.score) {
+                    ++mismatches; ++g_failures;
+                    std::cout << "  FAIL id d1 == direct d1 [" << fen << "]: "
+                              << ra.score << " vs " << rd.score << "\n";
+                }
             }
         }
     if (mismatches == 0)
-        std::cout << "  ID consistency: final ID iteration == direct depth-N search, depths 1..5\n";
+        std::cout << "  ID determinism: identical score/move/nodes across repeated runs, depths 1..5"
+                     " (d1 == direct anchor)\n";
 }
 
 // ---- 2. PV validity ----------------------------------------------------------
@@ -175,7 +182,7 @@ int main() {
     ttB.resize(8);
     static PvTable pvA, pvB;   // static to keep these large tables off the main stack
 
-    test_id_consistency(ttA, ttB, pvA, pvB);
+    test_id_determinism(ttA, ttB, pvA, pvB);
     test_pv_validity(ttA, pvA);
     test_mate_reporting(ttA, pvA);
     test_info_fields(ttA, pvA);

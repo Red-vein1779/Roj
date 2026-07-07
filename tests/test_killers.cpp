@@ -3,8 +3,13 @@
 // Maps to phase2.md Step 5 "done when":
 //  1. RESULT-INVARIANCE GATE (quiescence OFF): full-window search with killers+
 //     history ON == minimax, depths 1..4, best move stable.
-//  2. NODE-COUNT REDUCTION (quiescence ON): killers+history ON <= OFF, identical
-//     score, per position.
+//  2. NODE-COUNT REDUCTION (quiescence ON): killers+history reduce total nodes
+//     across the suite, identical score per position. (Phase 3 Step 1 amendment:
+//     with PVS unconditional, a killer-induced reordering can occasionally COST
+//     nodes on a single position — a different null-window probe pattern
+//     triggers extra re-searches — so the Phase 2 per-position "ON <= OFF" claim
+//     is too strong; the benefit is asserted in AGGREGATE, and the technique's
+//     Elo value is SPRT-measured.)
 //  3. UNIT: killer store/shift + no-dup; quiet cutoff stores a killer, capture
 //     cutoff does not; history increment + bounded aging; between-search hygiene.
 //
@@ -95,6 +100,7 @@ static void test_node_reduction() {
         {"P6",       "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"}
     };
     const int depth = 4;
+    std::uint64_t total_on = 0, total_off = 0;
     for (const P& p : ps) {
         Position pa; parse_fen(pa, p.fen);
         Position pb; parse_fen(pb, p.fen);
@@ -104,9 +110,13 @@ static void test_node_reduction() {
         const SearchResult ru = search_root(pb, depth, off);
         std::cout << "  " << p.name << " d" << depth << ": nodes ON=" << on.nodes
                   << " OFF=" << off.nodes << "  score=" << ro.score << "\n";
-        check(on.nodes <= off.nodes, std::string("nodes ON <= OFF [") + p.name + "]");
+        total_on  += on.nodes;
+        total_off += off.nodes;
         check(ro.score == ru.score,  std::string("identical score ON/OFF [") + p.name + "]");
     }
+    std::cout << "  aggregate d" << depth << ": nodes ON=" << total_on
+              << " OFF=" << total_off << "\n";
+    check(total_on < total_off, "aggregate nodes ON < OFF across the suite");
 }
 
 // ---- 3a. Killer store / shift ------------------------------------------------
