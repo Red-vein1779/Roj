@@ -103,10 +103,18 @@ dess två *användningar* (steg 7 och 8).
    (null-window-sökningarna) tar fulla TT-cutoffs; **PV-noder** fortsätter att
    använda TT enbart för dragordning, vilket bevarar den triangulära PV:ns
    integritet. Styrkan lämnas inte längre på bordet.
-3. **Bench om-baseline:as i PVS-commiten** (phase2.md §9, låst): bench-djupet
-   höjs till det djup som ger **~1–2 s väggklocketid** på referensmaskinen
-   (fastställs empiriskt i steget), och den nya nodsignaturen committas i
-   **samma commit** som PVS.
+3. **Bench om-baseline:as i PVS-commiten — djuphöjningen uppskjuten (ändring
+   efter steg 1-fynd).** Nodsignaturen om-baseline:as i samma commit som PVS
+   (oförändrat), men bench-DJUPET förblir 6 tills vidare. Dokumenterad
+   avvikelse: PVS ensam sänkte nodantalet ~13–42 %, men den effektiva
+   förgreningsfaktorn (~5–6×/ply) sätts av beskärningsteknikerna, inte av
+   PVS — phase2.md §9:s premiss ("djupare bench blir billig med PVS") höll
+   bara delvis, och inget djup > 6 uppfyllde ~1–2 s-målet på referensmaskinen
+   (d7 ≈ 11 s, d8 ≈ 42 s). Djuphöjningen flyttas till en definierad punkt:
+   **omedelbart efter att Block B:s LTC-regression passerat** (dvs. efter
+   LMR-avsigneringen); djupet väljs då empiriskt för ~1–2 s väggklocketid och
+   signaturen om-baseline:as i samma commit (åtgärdspunkt i §6, Block B:s
+   LTC-rad).
 4. **En teknik = en toggle = en SPRT.** Varje teknik implementeras bakom en
    **temporär UCI-option** (default PÅ; av-läget återger föregående beteende
    exakt). fastchess A/B-testar samma binär med option på/av. I
@@ -208,7 +216,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 | 3 | Check extension | CheckExt | Schackdrag förlängs ett ply; ply-taket (MAX_PLY) respekteras — ingen förlängningsexplosion (seldepth begränsad); mate-sviten grön; SPRT **PASS [0, 5]**; toggle borttagen. |
 | 4 | Null move pruning | NMP | Null-drag görs/ångras korrekt (EP-fält nollas, hash uppdateras — verifierat mot from-scratch-hash); zugzwang-vakt (aldrig i schack; sidan har icke-bondmaterial); aldrig två null i rad; adaptiv R (egen formel); overifierade matt-scorer från null-sökningen returneras aldrig som matt (klipps mot beta); SPRT **PASS [0, 10]**; toggle borttagen. |
 | 5 | LMR | LMR | Egen log-baserad reduktionstabell (genererad vid start av egen formel, egna konstanter); reducerar aldrig: slag, promotioner, schackdrag, drag som ger schack, killers, TT-draget, drag när sidan står i schack; re-search vid fail-high (reducerat ⇒ fullt djup ⇒ vid behov fullt fönster); mindre reduktion i PV-noder; SPRT **PASS [0, 10]**; toggle borttagen. |
-| — | **LTC-regression block B** | | 1 000 partier 30+0.3, ny master mot block A-mastern: ingen säkerställd regression. |
+| — | **LTC-regression block B** | | 1 000 partier 30+0.3, ny master mot block A-mastern: ingen säkerställd regression. **Därefter (§3 beslut 3): bench-djupet höjs — djupet väljs empiriskt för ~1–2 s väggklocketid, och signaturen om-baseline:as i samma commit.** |
 
 ### Block C — SEE
 
@@ -339,6 +347,14 @@ detaljerna där verkliga buggar bor.
 - **Repetition/GHI oförändrat.** Fas 2:s linje gäller: repetition längs
   sökvägen kontrolleras före TT-konsultation; GHI-imperfektionen accepteras
   och omprövas på TCEC-nivå.
+- **TT-drags-legalitet (§2.1 punkt 4 — löst i steg 1-inventeringen).**
+  Strukturellt garanterad i dagens sökning: TT-draget används enbart som
+  ordningsnyckel och matchas mot en färskt genererad laglig draglista;
+  värde-cutoffs exekverar aldrig draget. En nyckelkollision kan därför på sin
+  höjd förvränga dragordningen — aldrig injicera ett olagligt drag.
+  **Dokumenterad vakt:** OM ett senare steg börjar pröva eller spela
+  TT-draget före draggenereringen måste en explicit legalitetskontroll läggas
+  till i det steget.
 - **Toggle-hygien.** Av-läget måste återge föregående beteende **exakt**
   (verifieras med bench-signatur: toggle-AV ⇒ gamla signaturen). Annars mäter
   SPRT:n fel sak.

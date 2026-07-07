@@ -6,6 +6,9 @@
 #        the canonical local build stays warning-flag-clean without -Werror),
 #        then the bench node signature compared against tests/bench.expected.
 #        Re-baselining a signature is a one-line diff of that file.
+# Job 3 (Phase 3 Step 1): the ASan+UBSan ENGINE debug target (phase2.md §12)
+#        runs a fixed-depth search workload, so the DoD item "sanitizer-clean
+#        search with all Phase 3 techniques active" is checked on every push.
 name: CI
 
 on: [push]
@@ -44,3 +47,20 @@ jobs:
           actual=$(printf 'bench\nquit\n' | ./Roj | sed -n 's/^Nodes searched: //p' | tr -d '[:space:]')
           echo "expected=$expected actual=$actual"
           test -n "$actual" && test "$actual" = "$expected"
+
+  sanitizer-search:
+    name: sanitizer gate (ASan+UBSan search)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compiler version
+        run: g++ --version
+      - name: Build sanitized engine (phase2.md §12 debug target)
+        run: >
+          g++ -O1 -g -std=c++17 -fsanitize=address,undefined
+          -fno-sanitize-recover=all -fno-omit-frame-pointer
+          src/*.cpp -o Roj_debug
+      - name: Fixed-depth search workload (any sanitizer diagnostic = nonzero exit)
+        run: |
+          printf 'uci\nposition startpos\ngo depth 7\nposition fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1\ngo depth 6\nposition fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1\ngo depth 8\nquit\n' | ./Roj_debug | tee search_out.txt
+          test "$(grep -c '^bestmove ' search_out.txt)" -eq 3
