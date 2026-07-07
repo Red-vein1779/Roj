@@ -1,6 +1,6 @@
 # Roj — Fas 2: Kärnsökning
 
-**Status: LÅST.** Detta är den slutgiltiga kartan för Fas 2. Den ändras bara
+**Status: KOMPLETT (LÅST).** Detta är den slutgiltiga kartan för Fas 2. Den ändras bara
 om en konkret lucka identifieras — och i så fall uppdateras dokumentet *innan*
 implementationen fortsätter. Kartan är kompassen. Till skillnad från Fas 1, där
 kompassen var en enda siffra (perft), är Fas 2:s nordstjärna **TT-invarianten**
@@ -391,22 +391,22 @@ fastchess \
 
 Vi är klara — och får först då röra Fas 3 — när **samtliga** är sanna:
 
-- [ ] **TT-invarianten håller** (§8): rot-score identisk **oberoende av `Hash`-storlek** (t.ex. 1 MB vs 256 MB) och deterministisk, över en svit av ställningar och djup; tripwire larmar vid korrumperat TT-fält.
-- [ ] **Mate-svit:** korrekt matt-*score* OCH matt-*drag* på en uppsättning
+- [x] **TT-invarianten håller** (§8): rot-score identisk **oberoende av `Hash`-storlek** (t.ex. 1 MB vs 256 MB) och deterministisk, över en svit av ställningar och djup; tripwire larmar vid korrumperat TT-fält.
+- [x] **Mate-svit:** korrekt matt-*score* OCH matt-*drag* på en uppsättning
       forcerade matt (mate-in-1 till -4).
-- [ ] **Aldrig förlust på tid** över flera tidskontroller, inklusive mycket korta.
-- [ ] **`bench` deterministiskt** — identiskt nodantal mellan körningar och mellan
+- [x] **Aldrig förlust på tid** över flera tidskontroller, inklusive mycket korta.
+- [x] **`bench` deterministiskt** — identiskt nodantal mellan körningar och mellan
       Windows och Linux.
-- [ ] **Perft fortsatt grön** — Fas 1:s grind är inte bruten av något i Fas 2.
-- [ ] **Sanitizer-rent** (ASan + UBSan) på sök + qsearch + TT till rimligt
+- [x] **Perft fortsatt grön** — Fas 1:s grind är inte bruten av något i Fas 2.
+- [x] **Sanitizer-rent** (ASan + UBSan) på sök + qsearch + TT till rimligt
       djup/tid i debug-bygget.
-- [ ] **Score-konventioner och mate-distans** dokumenterade i koden och
+- [x] **Score-konventioner och mate-distans** dokumenterade i koden och
       round-trip-testade i TT (§4).
-- [ ] **SPRT-harnessen körbar** med minst en avslutad self-play-SPRT som nått ett
+- [x] **SPRT-harnessen körbar** med minst en avslutad self-play-SPRT som nått ett
       beslut; noll time-losses; referensmotorer valda och versionslåsta.
-- [ ] Kompilerar rent med `g++ -O3 -std=c++17 src/*.cpp -o Roj` under
+- [x] Kompilerar rent med `g++ -O3 -std=c++17 src/*.cpp -o Roj` under
       `-Wall -Wextra -Wpedantic` på g++ 13 (Linux) och 15 (Windows).
-- [ ] Ingen rad kod kopierad eller härledd från någon annan engine.
+- [x] Ingen rad kod kopierad eller härledd från någon annan engine.
 
 **Sanity-mätare (ej grind):** andel lösta ställningar i en taktiksvit (t.ex.
 WAC / Win at Chess) vid fast tid. Ärligt: andelen beror på tid och eval-kvalitet
