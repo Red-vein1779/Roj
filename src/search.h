@@ -76,16 +76,6 @@ struct SearchInfo {
     // legally short-circuit with a fail-soft value from another window/depth.
     PvTable* pv = nullptr;
 
-    // Phase 3 Step 2: aspiration windows (temporary UCI toggle "Aspiration";
-    // removed at sign-off). ON: an ID iteration deep enough (see search_id)
-    // opens with a narrow window centred on the previous iteration's score and
-    // widens exponentially on fail-high/low, falling back to the full window.
-    // Mate-zone guard (phase3.md §8): a previous score in the mate zone opens
-    // the next iteration with the full window directly. OFF: every iteration is
-    // full-window — exactly the Step 1 behaviour. Default false so fixed-config
-    // tests are unchanged; the play path (`go`) and bench turn it on.
-    bool use_aspiration = false;
-
     // Step 9: time management + abortable search. `check_time` is the master switch
     // for ALL of this: when it is false (fixed-depth `go depth N`, the minimax
     // oracle, and every test that searches a fixed depth) none of the fields below

@@ -535,7 +535,9 @@ SearchResult search_id(Position& pos, int maxDepth, SearchInfo& info, bool print
 
         info.seldepth = 0;
         SearchResult r{ 0, MOVE_NONE };
-        if (info.use_aspiration && d >= ASPIRATION_MIN_DEPTH
+        // Aspiration (unconditional since the Step 2 sign-off): deep-enough
+        // iterations open with a narrow window around the previous score.
+        if (d >= ASPIRATION_MIN_DEPTH
             && info.completed_depth == d - 1 && !in_mate_zone(best.score)) {
             int delta = ASPIRATION_DELTA;
             int alpha = best.score - delta;
