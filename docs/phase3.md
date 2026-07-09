@@ -124,6 +124,19 @@ dess två *användningar* (steg 7 och 8).
    **flaggad avvikelse** mot phase2.md §10, motiverad: matchar den uppmätta
    Elo-baslinjen och Rojs profil som relativt starkare på längre TC).
    Concurrency 6, `option.Threads=1`, noll time-losses-invarianten kvarstår.
+5b. **Fast partiantal + konfidensintervall för mellan- och finnivåerna
+   (ändring efter steg 2-fynd).** [0, 10]-nivån ("stor vinnare") är
+   **oförändrad**: sekventiell SPRT till LLR-beslut (±2.94). Nivåerna [0, 5]
+   och [0, 3] byter metod: **fast 400 partier** (200 par, `-games 2 -repeat`,
+   ingen `-sprt`-flagga), därefter beräknas Elo-differensen med
+   95 %-konfidensintervall ur slutresultatet. **PASS** = intervallets undre
+   gräns > 0. **FAIL** = övre gränsen < 0. **Oavgjort** (intervallet spänner
+   över 0) behandlas som FAIL → parkeringspolicyn (beslut 7) tillämpas.
+   **Ärlig avvägning, öppet dokumenterad:** 400 partier ger *svagare
+   statistisk styrka* än en fullbordad sekventiell SPRT — detta är ett
+   medvetet tidsbudget-före-rigor-val (samma ärlighetsprincip som
+   GHI-noteringen i phase2.md §9), och det anges uttryckligen i varje
+   av-signeringscommit på dessa nivåer.
 6. **LTC-regressionsgrind efter varje block:** 1 000 partier (500 par,
    `-games 2 -repeat`) vid **30+0.3**, ny master mot blockets startversion.
    Pass: ingen statistiskt säkerställd regression (95 %-intervallet för
@@ -264,18 +277,22 @@ Steg 14 = mätning och avsignering.
 Gemensamt för alla SPRT-körningar: fastchess, self-play (ny toggle-PÅ mot
 samma binär toggle-AV, alternativt ny commit mot förra mastern), parade
 färgbytta partier (`-games 2 -repeat`), balanserad bok (`8moves_v3.pgn`,
-`order=random`), pentanomial (`-report penta=true`), `alpha=0.05 beta=0.05`
-(LLR-gränser −2.94/2.94), TC **10+0.1**, concurrency **6**,
-`option.Threads=1`, **noll time-losses** (annars sänk concurrency — invariant
-från Fas 2).
+`order=random`), pentanomial (`-report penta=true`), TC **10+0.1**,
+concurrency **6**, `option.Threads=1`, **noll time-losses** (annars sänk
+concurrency — invariant från Fas 2). Seed: `-srand <N>` — flaggan
+`-randomseed` finns **inte** i den versionslåsta fastchess-binären
+(steg 1-fynd); konventionen är `-srand 42`, med varierat seed när partier
+från flera körningar poolas.
 
-| Nivå | Tekniker | Bounds (elo0, elo1) |
-|------|----------|---------------------|
-| Stor vinnare | PVS, NMP, LMR, SEE-qsearch | [0, 10] |
-| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | [0, 5] |
-| Finjustering | LMP, razoring, singular extensions | [0, 3] |
+**Två metoder (§3 beslut 5b):**
 
-**Mallkommando (finslipas per steg i stegprompten):**
+| Nivå | Tekniker | Metod | Kriterium |
+|------|----------|-------|-----------|
+| Stor vinnare | PVS, NMP, LMR, SEE-qsearch | Sekventiell SPRT [0, 10], `alpha=0.05 beta=0.05` | LLR når ±2.94 — körs till beslut, ingen förtida avläsning |
+| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 400 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Finjustering | LMP, razoring, singular extensions | Fast 400 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+
+**Mallkommando — sekventiell nivå (finslipas per steg i stegprompten):**
 
 ```
 fastchess \
@@ -283,9 +300,22 @@ fastchess \
   -engine cmd=./Roj name=Roj_off option.Hash=16 option.<Toggle>=false \
   -each proto=uci tc=10+0.1 option.Threads=1 \
   -openings file=8moves_v3.pgn format=pgn order=random \
-  -rounds 50000 -games 2 -repeat -recover -randomseed \
+  -rounds 50000 -games 2 -repeat -recover -srand 42 \
   -concurrency 6 -report penta=true \
   -sprt elo0=0 elo1=10 alpha=0.05 beta=0.05 \
+  -pgnout out/roj_<teknik>.pgn
+```
+
+**Mallkommando — fast-400-nivå (ingen `-sprt`):**
+
+```
+fastchess \
+  -engine cmd=./Roj name=Roj_on  option.Hash=16 option.<Toggle>=true \
+  -engine cmd=./Roj name=Roj_off option.Hash=16 option.<Toggle>=false \
+  -each proto=uci tc=10+0.1 option.Threads=1 \
+  -openings file=8moves_v3.pgn format=pgn order=random \
+  -rounds 200 -games 2 -repeat -recover -srand 42 \
+  -concurrency 6 -report penta=true \
   -pgnout out/roj_<teknik>.pgn
 ```
 
@@ -294,9 +324,13 @@ fastchess \
 Pass: 95 %-intervallet för Elo-differensen täcker 0 eller ligger helt över.
 Fail: stopp — utredning och åtgärd innan nästa block påbörjas.
 
-**Statistisk hygien:** en SPRT i taget på maskinen; SPRT:n körs till sitt
-beslut (ingen förtida avläsning som beslutsgrund); H0 förkastad = PASS,
-H1 förkastad = FAIL ⇒ parkeringspolicyn (§3 beslut 7).
+**Statistisk hygien:** en mätning i taget på maskinen. Sekventiell nivå:
+SPRT:n körs till sitt beslut (ingen förtida avläsning som beslutsgrund);
+H0 förkastad = PASS, H1 förkastad = FAIL ⇒ parkeringspolicyn (§3 beslut 7).
+Fast-400-nivå: kriteriet avläses först vid exakt 400 partier; ett stoppat
+delresultat får aldrig användas som beslut. Partier från en avbruten körning
+med identisk konfiguration får poolas till 400-talet (fast-N är inte
+sekventiellt), med varierat seed för tilläggsbatchen.
 
 ---
 
