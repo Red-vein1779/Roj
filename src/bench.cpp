@@ -84,7 +84,6 @@ std::uint64_t run_bench(bool verbose) {
         info.use_qsearch = true;
         info.use_delta_pruning = true;
         info.use_draw_detection = true;
-        info.use_check_ext = true;       // Phase 3 Step 3: the play path extends checks
         info.tt = &tt;
         info.pv = &pv;
 

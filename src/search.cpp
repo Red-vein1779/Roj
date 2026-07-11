@@ -290,8 +290,12 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     // even in a pathological all-check (cross-check) sequence. One extension
     // per node (§8 "ingen stapling i Fas 3"): if a second extension REASON is
     // ever added (Step 13, singular extensions), reasons must not stack — a
-    // node gets at most +1 ply from all reasons combined.
-    if (info.use_check_ext && ply + depth < MAX_PLY - 1 && in_check(pos))
+    // node gets at most +1 ply from all reasons combined. The ROOT is never
+    // extended (ply > 0): on the play path search() is only entered at
+    // ply >= 1 (search_root owns ply 0 and does not extend — the root depth IS
+    // the iteration definition); direct ply-0 calls (test harnesses) follow
+    // the same rule so the minimax-oracle identity compares the same tree.
+    if (ply > 0 && ply + depth < MAX_PLY - 1 && in_check(pos))
         ++depth;
 
     if (depth == 0)
@@ -631,6 +635,13 @@ int minimax(Position& pos, int depth, int ply) {
     generate_legal_moves(pos, ml);
     if (ml.count == 0)
         return terminal_score(pos, ply);
+    // Step 3 sign-off: the oracle mirrors the search's now-unconditional check
+    // extension (same rule, same MAX_PLY guard), so the regression identity
+    // "alpha-beta == minimax" keeps comparing the SAME tree definition. Like
+    // the engine (search_root never extends — the root depth IS the iteration
+    // definition), the ROOT is not extended: ply > 0 only.
+    if (ply > 0 && ply + depth < MAX_PLY - 1 && in_check(pos))
+        ++depth;
     if (depth == 0)
         return evaluate(pos);
 
