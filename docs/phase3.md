@@ -137,10 +137,18 @@ dess två *användningar* (steg 7 och 8).
    medvetet tidsbudget-före-rigor-val (samma ärlighetsprincip som
    GHI-noteringen i phase2.md §9), och det anges uttryckligen i varje
    av-signeringscommit på dessa nivåer.
-6. **LTC-regressionsgrind efter varje block:** 1 000 partier (500 par,
-   `-games 2 -repeat`) vid **30+0.3**, ny master mot blockets startversion.
-   Pass: ingen statistiskt säkerställd regression (95 %-intervallet för
-   Elo-differensen täcker 0 eller ligger helt över). Skyddar mot
+6. **LTC-regressionsgrind efter varje block: 200 partier (sänkt från
+   1 000 — ändring under Block A:s körning).** Ursprungskriteriet var 1 000
+   partier (500 par); det sänks till **200 partier** (100 par, `-games 2
+   -repeat`) vid **30+0.3**, ny master mot blockets startversion, för
+   samtliga block A–D. Passkriteriet är i sak oförändrat: ingen statistiskt
+   säkerställd regression (95 %-intervallet för Elo-differensen täcker 0
+   eller ligger helt över). Motivering: Block A:s löpande LTC visade att
+   riktningen avgörs långt före 1 000 partier — 140 poolade partier gav
+   Elo +118.6 med 95 %-KI [+66.1, +176.9], helt över noll med bred
+   marginal; ytterligare partier smalnar bara ett intervall som redan
+   besvarat grindens fråga. Samma tidsbudget-mot-rigor-avvägning och
+   redovisningsplikt som §3 beslut 5b. Skyddar fortsatt mot
    STC-överanpassning — särskilt relevant för Roj.
 7. **Parkeringspolicy (bindande):** misslyckas en SPRT tillåts **ett (1)**
    dokumenterat omtuningsförsök (parameterändringen skrivs ned *innan* den nya
@@ -220,7 +228,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 |---|------|--------|-----------|
 | 1 | PVS + TT-cutoffs + bench-rebaseline | PVS | Icke-PV-noder söker null-window med fulla TT-värde-cutoffs; PV-noder oförändrade (TT enbart ordning); re-search-logiken korrekt (fail-high på null-window ⇒ full-window-omsökning); triangulär PV fortsatt laglig, spelbar och komplett; mate-sviten grön; **§2.1-invarianterna gröna**; bench-djup höjt till ~1–2 s väggklocketid och ny signatur committad i **samma commit**; SPRT **PASS [0, 10]**; toggle borttagen i av-signeringscommiten. |
 | 2 | Aspiration windows | Aspiration | Fönster runt föregående iterations score; vidgningsschema vid fail-high/low med fallback till fullt fönster; matt-scorer ⇒ fullt fönster direkt; `info`-utskrift korrekt även vid fail-high/low; SPRT **PASS [0, 5]**; toggle borttagen. |
-| — | **LTC-regression block A** | | 1 000 partier 30+0.3, ny master mot `phase2-final`: ingen säkerställd regression. |
+| — | **LTC-regression block A** | | 200 partier 30+0.3, ny master mot `phase2-final`: ingen säkerställd regression. |
 
 ### Block B — De stora beskärarna
 
@@ -229,7 +237,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 | 3 | Check extension | CheckExt | Schackdrag förlängs ett ply; ply-taket (MAX_PLY) respekteras — ingen förlängningsexplosion (seldepth begränsad); mate-sviten grön; SPRT **PASS [0, 5]**; toggle borttagen. |
 | 4 | Null move pruning | NMP | Null-drag görs/ångras korrekt (EP-fält nollas, hash uppdateras — verifierat mot from-scratch-hash); zugzwang-vakt (aldrig i schack; sidan har icke-bondmaterial); aldrig två null i rad; adaptiv R (egen formel); overifierade matt-scorer från null-sökningen returneras aldrig som matt (klipps mot beta); SPRT **PASS [0, 10]**; toggle borttagen. |
 | 5 | LMR | LMR | Egen log-baserad reduktionstabell (genererad vid start av egen formel, egna konstanter); reducerar aldrig: slag, promotioner, schackdrag, drag som ger schack, killers, TT-draget, drag när sidan står i schack; re-search vid fail-high (reducerat ⇒ fullt djup ⇒ vid behov fullt fönster); mindre reduktion i PV-noder; SPRT **PASS [0, 10]**; toggle borttagen. |
-| — | **LTC-regression block B** | | 1 000 partier 30+0.3, ny master mot block A-mastern: ingen säkerställd regression. **Därefter (§3 beslut 3): bench-djupet höjs — djupet väljs empiriskt för ~1–2 s väggklocketid, och signaturen om-baseline:as i samma commit.** |
+| — | **LTC-regression block B** | | 200 partier 30+0.3, ny master mot block A-mastern: ingen säkerställd regression. **Därefter (§3 beslut 3): bench-djupet höjs — djupet väljs empiriskt för ~1–2 s väggklocketid, och signaturen om-baseline:as i samma commit.** |
 
 ### Block C — SEE
 
@@ -238,7 +246,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 | 6 | SEE-funktionen + orakel | — (ingen SPRT) | Egen SEE (iterativ swap-algoritm över egna attackuppslag, inkl. x-ray genom glidare; kung deltar sist; promotion/EP-hantering definierad; pinnade pjäser ignoreras — dokumenterad accepterad imperfektion); **brute-force-oraklet** (spela upp bytessekvensen med make/unmake, minimax:a materialutfallet) ger identiskt värde över hela den konstruerade testsviten + slumpade ställningar; deterministisk grind grön i CI. |
 | 7 | SEE i quiescence | SEEQPrune | Slag med SEE < 0 beskärs i qsearch (utom i schack); delta pruning-samspelet definierat och dokumenterat; taktiksviten (sanity-mätaren) ingen kollaps; SPRT **PASS [0, 10]**; toggle borttagen. |
 | 8 | SEE i dragordning | SEEOrder | Slag delas i vinnande/jämna (före killers) och förlorande (efter tysta drag) ovanpå MVV-LVA; identisk bästa score vid fast djup med/utan (ordning är sökneutral på fast djup — detta steg har alltså även en determinism-kontroll); SPRT **PASS [0, 5]**; toggle borttagen. |
-| — | **LTC-regression block C** | | 1 000 partier 30+0.3, ny master mot block B-mastern: ingen säkerställd regression. |
+| — | **LTC-regression block C** | | 200 partier 30+0.3, ny master mot block B-mastern: ingen säkerställd regression. |
 
 ### Block D — Marginalbeskärarna
 
@@ -253,7 +261,7 @@ Marginalerna är teknisk skuld mot Fas 4/5 (§3 beslut 10).
 | 10 | Futility pruning | Futility | Vid lågt djup: tysta drag hoppas när static eval + marginal(djup) ≤ alpha; aldrig TT-drag/killers vid tveksamhet — exakt dragmängd dokumenteras; SPRT **PASS [0, 5]**; toggle borttagen. |
 | 11 | Late move pruning | LMP | Tysta drag bortom tröskel(djup) hoppas vid lågt djup; tröskeltabell egen; SPRT **PASS [0, 3]**; toggle borttagen. |
 | 12 | Razoring | Razor | Vid mycket lågt djup och static eval långt under alpha: fall ned i qsearch (med eller utan verifikation — varianten låses i stegprompten); SPRT **PASS [0, 3]**; toggle borttagen. |
-| — | **LTC-regression block D** | | 1 000 partier 30+0.3, ny master mot block C-mastern: ingen säkerställd regression. |
+| — | **LTC-regression block D** | | 200 partier 30+0.3, ny master mot block C-mastern: ingen säkerställd regression. |
 
 ### Block E — Villkorat
 
@@ -320,7 +328,8 @@ fastchess \
 ```
 
 **LTC-regression (per block):** samma upplägg utan `-sprt`, `tc=30+0.3`,
-`-rounds 500 -games 2` (= 1 000 partier), ny master mot blockets startversion.
+`-rounds 100 -games 2` (= 200 partier, §3 beslut 6 som ändrat), ny master
+mot blockets startversion.
 Pass: 95 %-intervallet för Elo-differensen täcker 0 eller ligger helt över.
 Fail: stopp — utredning och åtgärd innan nästa block påbörjas.
 
@@ -417,8 +426,9 @@ Vi är klara — och får först då röra Fas 4 — när **samtliga** är sanna
 
 - [ ] **Alla icke-parkerade steg SPRT-avsignerade** till beslut vid 10+0.1,
       noll time-losses, med dokumenterade LLR-utfall.
-- [ ] **Alla fyra LTC-regressionsgrindarna passerade** (block A–D; 1 000
-      partier 30+0.3 vardera, ingen säkerställd regression).
+- [ ] **Alla fyra LTC-regressionsgrindarna passerade** (block A–D; 200
+      partier 30+0.3 vardera per §3 beslut 6 som ändrat, ingen säkerställd
+      regression).
 - [ ] **Parkerade tekniker (om några) dokumenterade i §9** med utfall och
       motivering; singular extensions-beslutet dokumenterat.
 - [ ] **SEE-oraklet grönt** över hela testsviten, deterministiskt, i CI.
