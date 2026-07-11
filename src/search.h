@@ -76,6 +76,17 @@ struct SearchInfo {
     // legally short-circuit with a fail-soft value from another window/depth.
     PvTable* pv = nullptr;
 
+    // Phase 3 Step 3: check extension (temporary UCI toggle "CheckExtension";
+    // removed at sign-off). ON: a node whose side to move is in check is
+    // searched one ply deeper — the depth budget is not decremented for that
+    // level — capped so ply + depth never reaches MAX_PLY - 1 (no extension
+    // explosion, see the guard comment in search()). The extension is applied
+    // at the NODE itself, so it holds identically whether the node was reached
+    // by a full-window or a null-window (PVS) parent search. OFF: exactly the
+    // Step 2 search. Default false so fixed-config tests are unchanged; the
+    // play path (`go`) and bench turn it on.
+    bool use_check_ext = false;
+
     // Step 9: time management + abortable search. `check_time` is the master switch
     // for ALL of this: when it is false (fixed-depth `go depth N`, the minimax
     // oracle, and every test that searches a fixed depth) none of the fields below

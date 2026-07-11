@@ -280,6 +280,20 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     if (info.use_draw_detection && is_draw(pos, info))
         return VALUE_DRAW;
 
+    // Phase 3 Step 3: check extension — when the side to move is in check this
+    // node is searched one ply deeper (the depth budget is not decremented for
+    // this level; the node's children see the un-decremented depth). Budget
+    // guard (phase3.md §8): granted only while ply + depth < MAX_PLY - 1.
+    // Down any path ply+depth is otherwise non-increasing (child = ply+1,
+    // depth-1), so each extension raises it by exactly 1 toward a hard cap —
+    // total extensions per path are bounded and ply can NEVER pass MAX_PLY,
+    // even in a pathological all-check (cross-check) sequence. One extension
+    // per node (§8 "ingen stapling i Fas 3"): if a second extension REASON is
+    // ever added (Step 13, singular extensions), reasons must not stack — a
+    // node gets at most +1 ply from all reasons combined.
+    if (info.use_check_ext && ply + depth < MAX_PLY - 1 && in_check(pos))
+        ++depth;
+
     if (depth == 0)
         return info.use_qsearch ? qsearch(pos, alpha, beta, ply, info) : evaluate(pos);
 

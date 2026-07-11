@@ -62,5 +62,5 @@ jobs:
           src/*.cpp -o Roj_debug
       - name: Fixed-depth search workload (any sanitizer diagnostic = nonzero exit)
         run: |
-          printf 'uci\nposition startpos\ngo depth 7\nposition fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1\ngo depth 6\nposition fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1\ngo depth 8\nquit\n' | ./Roj_debug | tee search_out.txt
-          test "$(grep -c '^bestmove ' search_out.txt)" -eq 3
+          printf 'uci\nposition startpos\ngo depth 7\nposition fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1\ngo depth 6\nposition fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1\ngo depth 8\nposition fen q5k1/5ppp/8/8/8/8/5PPP/Q5K1 w - - 0 1\ngo depth 8\nquit\n' | ./Roj_debug | tee search_out.txt
+          test "$(grep -c '^bestmove ' search_out.txt)" -eq 4
