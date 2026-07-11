@@ -132,11 +132,19 @@ dess två *användningar* (steg 7 och 8).
    95 %-konfidensintervall ur slutresultatet. **PASS** = intervallets undre
    gräns > 0. **FAIL** = övre gränsen < 0. **Oavgjort** (intervallet spänner
    över 0) behandlas som FAIL → parkeringspolicyn (beslut 7) tillämpas.
-   **Ärlig avvägning, öppet dokumenterad:** 400 partier ger *svagare
+   **Ärlig avvägning, öppet dokumenterad:** ett fast partiantal ger *svagare
    statistisk styrka* än en fullbordad sekventiell SPRT — detta är ett
    medvetet tidsbudget-före-rigor-val (samma ärlighetsprincip som
    GHI-noteringen i phase2.md §9), och det anges uttryckligen i varje
    av-signeringscommit på dessa nivåer.
+   **Sänkning 400 → 150 partier (ändring efter steg 2–3-utfallen, gäller
+   från och med steg 4):** steg 2:s och steg 3:s faktiska 400-partiersutfall
+   (95 %-KI [+3.1, +65.4] respektive [+13.1, +72.4]) visade tydlig
+   signifikans med bred marginal långt före 400 partier — de extra partierna
+   smalnade bara redan avgörande intervall (samma resonemang som beslut 6:s
+   LTC-sänkning). Det fasta antalet är därför **150 partier** (75 par).
+   **Ej retroaktivt:** steg 2:s och steg 3:s redan committade
+   400-partiers-avsigneringar står oförändrade och öppnas inte om.
 6. **LTC-regressionsgrind efter varje block: 200 partier (sänkt från
    1 000 — ändring under Block A:s körning).** Ursprungskriteriet var 1 000
    partier (500 par); det sänks till **200 partier** (100 par, `-games 2
@@ -297,8 +305,8 @@ från flera körningar poolas.
 | Nivå | Tekniker | Metod | Kriterium |
 |------|----------|-------|-----------|
 | Stor vinnare | PVS, NMP, LMR, SEE-qsearch | Sekventiell SPRT [0, 10], `alpha=0.05 beta=0.05` | LLR når ±2.94 — körs till beslut, ingen förtida avläsning |
-| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 400 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
-| Finjustering | LMP, razoring, singular extensions | Fast 400 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 150 partier + 95 % CI (steg 2–3 kördes med 400 innan sänkningen) | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Finjustering | LMP, razoring, singular extensions | Fast 150 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
 
 **Mallkommando — sekventiell nivå (finslipas per steg i stegprompten):**
 
@@ -314,7 +322,7 @@ fastchess \
   -pgnout out/roj_<teknik>.pgn
 ```
 
-**Mallkommando — fast-400-nivå (ingen `-sprt`):**
+**Mallkommando — fast-antal-nivå (150 partier, ingen `-sprt`):**
 
 ```
 fastchess \
@@ -322,7 +330,7 @@ fastchess \
   -engine cmd=./Roj name=Roj_off option.Hash=16 option.<Toggle>=false \
   -each proto=uci tc=10+0.1 option.Threads=1 \
   -openings file=8moves_v3.pgn format=pgn order=random \
-  -rounds 200 -games 2 -repeat -recover -srand 42 \
+  -rounds 75 -games 2 -repeat -recover -srand 42 \
   -concurrency 6 -report penta=true \
   -pgnout out/roj_<teknik>.pgn
 ```
@@ -336,10 +344,11 @@ Fail: stopp — utredning och åtgärd innan nästa block påbörjas.
 **Statistisk hygien:** en mätning i taget på maskinen. Sekventiell nivå:
 SPRT:n körs till sitt beslut (ingen förtida avläsning som beslutsgrund);
 H0 förkastad = PASS, H1 förkastad = FAIL ⇒ parkeringspolicyn (§3 beslut 7).
-Fast-400-nivå: kriteriet avläses först vid exakt 400 partier; ett stoppat
-delresultat får aldrig användas som beslut. Partier från en avbruten körning
-med identisk konfiguration får poolas till 400-talet (fast-N är inte
-sekventiellt), med varierat seed för tilläggsbatchen.
+Fast-antal-nivå: kriteriet avläses först vid det fasta partiantalet (150
+från och med steg 4); ett stoppat delresultat får aldrig användas som
+beslut. Partier från en avbruten körning med identisk konfiguration får
+poolas till det fasta antalet (fast-N är inte sekventiellt), med varierat
+seed för tilläggsbatchen.
 
 ---
 
