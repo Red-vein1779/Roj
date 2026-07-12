@@ -84,7 +84,7 @@ std::uint64_t run_bench(bool verbose) {
         info.use_qsearch = true;
         info.use_delta_pruning = true;
         info.use_draw_detection = true;
-        info.use_nullmove = true;        // Phase 3 Step 4: the play path null-move-prunes
+        info.use_nullmove = true;        // Step 4 sign-off: NMP unconditional on the play path
         info.tt = &tt;
         info.pv = &pv;
 

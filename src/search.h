@@ -76,14 +76,18 @@ struct SearchInfo {
     // legally short-circuit with a fail-soft value from another window/depth.
     PvTable* pv = nullptr;
 
-    // Phase 3 Step 4: null move pruning (temporary UCI toggle "NullMove";
-    // UCI option removed at sign-off). ON: at non-PV, not-in-check nodes deep
-    // enough, where the side to move has non-pawn material and the previous ply
-    // was not itself a null move, the turn is passed and the position searched
-    // at reduced depth with a null window just above beta; a fail-high prunes
-    // the node (lower-bound TT store; mate-zone scores clipped to beta first —
-    // phase3.md §8). OFF: exactly the Step 3 search. Default false so
-    // fixed-config tests are unchanged; the play path and bench turn it on.
+    // Phase 3 Step 4: null move pruning — SPRT-signed-off and unconditional on
+    // the play path (`go` and bench set this true; the UCI toggle is removed).
+    // Kept as an INTERNAL test-layering flag (same pattern as use_qsearch and
+    // the other Phase 2 layer flags, default false) because NMP — unlike PVS
+    // and the check extension — is deliberately unsound pruning: it cannot be
+    // mirrored in the minimax oracle, so the oracle/regression tests need the
+    // sound-alpha-beta core with this off to stay meaningful (phase3.md §2).
+    // ON: at non-PV, not-in-check nodes deep enough, where the side to move
+    // has non-pawn material and the previous ply was not itself a null move,
+    // the turn is passed and searched at reduced depth with a null window just
+    // above beta; a fail-high prunes (BOUND_LOWER TT store; mate-zone scores
+    // clipped to beta first — phase3.md §8).
     bool use_nullmove = false;
 
     // Ply at which the search most recently made a null move on the CURRENT
