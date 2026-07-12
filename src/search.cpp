@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 
 namespace roj {
@@ -37,6 +38,23 @@ bool is_noisy(const Position& pos, Move m) {
 
 constexpr int PIECE_VALUE[PIECE_TYPE_NB] = { 0, 100, 320, 330, 500, 900, 0 };
 constexpr int DELTA_MARGIN = 200;
+
+// Phase 3 Step 5: LMR reduction table, generated at startup by OUR OWN
+// log-based formula with our own constants (phase3.md §3 decision 9 — no
+// published table): R(d, m) = floor(0.5 + ln(d) * ln(m) / 2.4), i.e.
+// round-half-up of ln(depth) * ln(move_number) / 2.4. Indices clamped to 63.
+// Examples: R(6,10)=2, R(3,4)=1, R(12,30)=4. Row/column 0 are unused (0).
+struct LmrTable {
+    int r[64][64];
+    LmrTable() {
+        for (int d = 0; d < 64; ++d)
+            for (int m = 0; m < 64; ++m)
+                r[d][m] = (d < 1 || m < 1)
+                    ? 0
+                    : static_cast<int>(0.5 + std::log(double(d)) * std::log(double(m)) / 2.4);
+    }
+};
+const LmrTable LMR_TABLE;
 
 constexpr int TT_MOVE_SCORE  = 1 << 24;
 constexpr int CAPTURE_BONUS  = 1 << 20;
@@ -383,6 +401,20 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     Move bestMove = MOVE_NONE;
     for (int i = 0; i < ml.count; ++i) {
         const Move m = ml.moves[i];
+        // Phase 3 Step 5: LMR candidacy — decided BEFORE make_move (is_capture
+        // reads the pre-move board). A move may be reduced only if it is late
+        // in the ordering (4th or later), the node is deep enough, the node is
+        // NOT in check (all evasions stay unreduced, consistent with Step 3's
+        // extension of in-check nodes), and the move is quiet: no capture, no
+        // promotion, not the TT move, not one of the two killers. The final
+        // never-reduce condition — the move must not GIVE check — is tested
+        // after make_move via the existing king-attack probe (one is_attacked
+        // call on the resulting position; no extra move generation).
+        const bool lmr_candidate = info.use_lmr && depth >= 3 && i >= 3
+            && !in_check_now
+            && !is_capture(pos, m) && !is_promotion(m)
+            && m != ttMove
+            && !(ply < MAX_PLY && (m == info.killers[ply][0] || m == info.killers[ply][1]));
         // Push THIS node's key so the child sees it as an ancestor for repetition
         // detection; pop after unmaking so `rep` is always balanced (returns to the
         // seeded pre-root history). Guarded so Step 7 behaviour is untouched when
@@ -395,19 +427,33 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
             // it is the presumed-best line.
             score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info, pv_node);
         } else {
-            // PVS probe (phase3.md §8 "re-search-kaskaden"): every later move is
-            // searched with a null window [alpha, alpha+1] as a NON-PV child
-            // (full TT value cutoffs). Step 5 (LMR) will slot a reduced-depth
-            // stage in FRONT of this probe:
-            //   reduced null-window -> fail-high => unreduced null-window
-            //   -> fail-high => full window (the re-search below).
-            score = -search(pos, depth - 1, -alpha - 1, -alpha, ply + 1, info, false);
-            // Re-search condition: the probe failed high (score > alpha) AND a
-            // wider window exists to re-search into (beta - alpha > 1 — at a
-            // null-window node the probe window IS the full window, so nothing
-            // can be widened). Full window, full depth, this node's type, so a
-            // PV re-search collects the complete triangular PV. Skipped when the
-            // probe was aborted (its score is a discarded sentinel).
+            // PVS + LMR re-search cascade, exactly as phase3.md §8 documents:
+            //   Stage 1: REDUCED null-window probe (LMR candidates only)
+            //     -> fail-high => Stage 2: UNREDUCED null-window, full depth
+            //     -> fail-high => Stage 3: full window, full depth (PV re-search)
+            // Non-candidates (R == 0) enter at Stage 2 directly — that is the
+            // plain Step 4 PVS probe, so LMR off reproduces Step 4 exactly.
+            int R = 0;
+            if (lmr_candidate && !in_check(pos)) {   // !gives-check (post-make)
+                R = LMR_TABLE.r[depth < 64 ? depth : 63][i < 64 ? i : 63];
+                if (pv_node && R > 0) --R;           // PV nodes: one ply less reduction
+            }
+            if (R > 0) {
+                // Stage 1: reduced depth clamped to >= 1 — qsearch is only ever
+                // entered via the normal depth==0 path, never a negative depth.
+                const int rd = (depth - 1 - R > 1) ? depth - 1 - R : 1;
+                score = -search(pos, rd, -alpha - 1, -alpha, ply + 1, info, false);
+                // Stage 2: the reduction may have missed something — verify at
+                // full depth with the SAME null window before trusting it.
+                if (score > alpha && !(info.check_time && info.aborted))
+                    score = -search(pos, depth - 1, -alpha - 1, -alpha, ply + 1, info, false);
+            } else {
+                score = -search(pos, depth - 1, -alpha - 1, -alpha, ply + 1, info, false);
+            }
+            // Stage 3: the full-depth null-window probe failed high (score >
+            // alpha) AND a wider window exists (beta - alpha > 1). Full window,
+            // full depth, this node's type, so a PV re-search collects the
+            // complete triangular PV. Skipped when aborted (sentinel score).
             if (score > alpha && beta - alpha > 1 && !(info.check_time && info.aborted))
                 score = -search(pos, depth - 1, -beta, -alpha, ply + 1, info, pv_node);
         }
