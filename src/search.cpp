@@ -295,7 +295,9 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
     // ply >= 1 (search_root owns ply 0 and does not extend — the root depth IS
     // the iteration definition); direct ply-0 calls (test harnesses) follow
     // the same rule so the minimax-oracle identity compares the same tree.
-    if (ply > 0 && ply + depth < MAX_PLY - 1 && in_check(pos))
+    const bool ext_eligible = (ply > 0 && ply + depth < MAX_PLY - 1);
+    const bool in_check_now = (info.use_nullmove || ext_eligible) ? in_check(pos) : false;
+    if (ext_eligible && in_check_now)
         ++depth;
 
     if (depth == 0)
@@ -322,6 +324,56 @@ int search(Position& pos, int depth, int alpha, int beta, int ply, SearchInfo& i
                 if (e.bound == BOUND_LOWER && s >= beta) return s;
                 if (e.bound == BOUND_UPPER && s <= alpha) return s;
             }
+        }
+    }
+
+    // Phase 3 Step 4: null move pruning (phase3.md §3, §8) — placed AFTER the
+    // TT probe so a cheap exact/bound cutoff always wins over a null search.
+    // If we pass the turn and a reduced null-window search STILL cannot get
+    // the opponent below beta, the real position almost certainly fails high —
+    // cut. Guards (locked minimum, §8): never in PV nodes (they want exact
+    // scores), never in check, never without non-pawn material (zugzwang:
+    // passing can be the only good "move" — detected as
+    // knights|bishops|rooks|queens == 0 for the side to move), never two nulls
+    // in a row (last_null_ply), never when beta is in the mate zone (a clipped
+    // cutoff value could not be kept below the zone). R (our own formula):
+    // R = 2 + depth / 6 — adaptive, deeper nodes reduce more. Null window
+    // [beta-1, beta]; the child is searched at depth - 1 - R as a non-PV node.
+    // Mate-zone clipping (§8): a fail-high score in the mate zone proves no
+    // mate (the opponent never moved) — clipped to beta BEFORE the TT store
+    // and the return, so no false mate can poison the TT. The store is
+    // BOUND_LOWER (a fail-high is a lower bound, Phase 2 §4), move NONE.
+    if (info.use_nullmove && !pv_node && !in_check_now
+        && depth >= 3
+        && beta < VALUE_MATE_IN_MAX_PLY
+        && ply != info.last_null_ply + 1
+        && (pos.pieces[pos.side_to_move][KNIGHT] | pos.pieces[pos.side_to_move][BISHOP]
+            | pos.pieces[pos.side_to_move][ROOK] | pos.pieces[pos.side_to_move][QUEEN]) != 0) {
+        const int R = 2 + depth / 6;
+        const int null_depth = (depth - 1 - R > 0) ? depth - 1 - R : 0;
+
+        const int saved_null_ply = info.last_null_ply;
+        info.last_null_ply = ply;
+        if (info.use_draw_detection) info.rep.push_back(pos.hash);
+        make_null_move(pos);
+        int null_score = -search(pos, null_depth, -beta, -beta + 1, ply + 1, info, false);
+        unmake_null_move(pos);
+        if (info.use_draw_detection) info.rep.pop_back();
+        info.last_null_ply = saved_null_ply;
+
+        if (info.check_time && info.aborted) return 0;   // discarded by the caller
+
+        if (null_score >= beta) {
+            if (null_score >= VALUE_MATE_IN_MAX_PLY)
+                null_score = beta;                       // §8: never return/store a null mate
+            if (info.tt != nullptr) {
+                int storeScore = value_to_tt(null_score, ply);
+                if (info.tt_tripwire) storeScore += 7;
+                info.tt->store(pos.hash, MOVE_NONE,
+                               static_cast<std::int16_t>(storeScore),
+                               static_cast<std::int16_t>(depth), BOUND_LOWER);
+            }
+            return null_score;
         }
     }
 

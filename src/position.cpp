@@ -244,4 +244,38 @@ void unmake_move(Position& pos, Move m) {
     pos.hash            = st.prev_hash;
 }
 
+// Phase 3 Step 4: null move — pass the turn. Only two state components change:
+// the side to move (XOR ZOBRIST_SIDE) and the en-passant square (cleared; per
+// Phase 1's always-if-exists convention its file key is XORed out iff it was
+// set). Castling rights, both clocks, every piece board and the composites are
+// untouched, so the incremental hash matches a from-scratch hash of the
+// resulting position exactly (validated by tests/test_nullmove.cpp).
+void make_null_move(Position& pos) {
+    StateInfo st;
+    st.captured_piece      = NO_PIECE;
+    st.prev_castling_rights = pos.castling_rights;
+    st.prev_ep_square       = pos.ep_square;
+    st.prev_halfmove_clock  = pos.halfmove_clock;
+    st.prev_hash            = pos.hash;
+    pos.history.push_back(st);
+
+    if (pos.ep_square != SQ_NONE) {
+        pos.hash ^= ZOBRIST_EP[file_of(pos.ep_square)];
+        pos.ep_square = SQ_NONE;
+    }
+    pos.side_to_move = ~pos.side_to_move;
+    pos.hash ^= ZOBRIST_SIDE;
+}
+
+void unmake_null_move(Position& pos) {
+    const StateInfo st = pos.history.back();
+    pos.history.pop_back();
+
+    pos.side_to_move    = ~pos.side_to_move;
+    pos.castling_rights = st.prev_castling_rights;
+    pos.ep_square       = st.prev_ep_square;
+    pos.halfmove_clock  = st.prev_halfmove_clock;
+    pos.hash            = st.prev_hash;
+}
+
 } // namespace roj

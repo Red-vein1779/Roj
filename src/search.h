@@ -76,6 +76,22 @@ struct SearchInfo {
     // legally short-circuit with a fail-soft value from another window/depth.
     PvTable* pv = nullptr;
 
+    // Phase 3 Step 4: null move pruning (temporary UCI toggle "NullMove";
+    // UCI option removed at sign-off). ON: at non-PV, not-in-check nodes deep
+    // enough, where the side to move has non-pawn material and the previous ply
+    // was not itself a null move, the turn is passed and the position searched
+    // at reduced depth with a null window just above beta; a fail-high prunes
+    // the node (lower-bound TT store; mate-zone scores clipped to beta first —
+    // phase3.md §8). OFF: exactly the Step 3 search. Default false so
+    // fixed-config tests are unchanged; the play path and bench turn it on.
+    bool use_nullmove = false;
+
+    // Ply at which the search most recently made a null move on the CURRENT
+    // path (set before the null-search recursion, restored after). A node at
+    // last_null_ply + 1 is the null move's direct child and may not null again
+    // (§8 "aldrig två null i rad"). -2 = no null move on the path.
+    int last_null_ply = -2;
+
     // Step 9: time management + abortable search. `check_time` is the master switch
     // for ALL of this: when it is false (fixed-depth `go depth N`, the minimax
     // oracle, and every test that searches a fixed depth) none of the fields below

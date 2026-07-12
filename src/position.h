@@ -98,6 +98,17 @@ bool is_attacked(Square sq, Color by, const Position& pos);
 void make_move(Position& pos, Move m);
 void unmake_move(Position& pos, Move m);
 
+// Phase 3 Step 4 (null move pruning): pass the turn without moving a piece.
+// Toggles the side to move and clears the en-passant square (a null move can
+// never be answered by an en-passant capture), updating the incremental hash
+// for exactly those two components — Phase 1's EP convention hashes the EP file
+// whenever ep_square exists, so clearing it XORs that file key out. Castling
+// rights, the clocks and all piece boards are untouched; a StateInfo is pushed
+// so unmake_null_move restores the position bit for bit (hash restored directly
+// from the snapshot, same no-double-count pattern as unmake_move).
+void make_null_move(Position& pos);
+void unmake_null_move(Position& pos);
+
 } // namespace roj
 
 #endif // ROJ_POSITION_H
