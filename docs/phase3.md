@@ -142,22 +142,32 @@ dess två *användningar* (steg 7 och 8).
    (95 %-KI [+3.1, +65.4] respektive [+13.1, +72.4]) visade tydlig
    signifikans med bred marginal långt före 400 partier — de extra partierna
    smalnade bara redan avgörande intervall (samma resonemang som beslut 6:s
-   LTC-sänkning). Det fasta antalet är därför **150 partier** (75 par).
-   **Ej retroaktivt:** steg 2:s och steg 3:s redan committade
+   LTC-sänkning). **Ej retroaktivt:** steg 2:s och steg 3:s redan committade
    400-partiers-avsigneringar står oförändrade och öppnas inte om.
-6. **LTC-regressionsgrind efter varje block: 200 partier (sänkt från
-   1 000 — ändring under Block A:s körning).** Ursprungskriteriet var 1 000
-   partier (500 par); det sänks till **200 partier** (100 par, `-games 2
-   -repeat`) vid **30+0.3**, ny master mot blockets startversion, för
-   samtliga block A–D. Passkriteriet är i sak oförändrat: ingen statistiskt
+   **Ytterligare sänkning 150 → 100 partier (efter Block B-utfallen, gäller
+   från och med Block C):** samtliga grindar hittills har givit KI långt
+   över noll utan ett enda gränsfall. Det fasta antalet är därför
+   **100 partier** (50 par). **Ärlig styrkevarning, öppet dokumenterad:**
+   100 partier är märkbart svagare än tidigare nivåer — i synnerhet för
+   [0, 3]-nivåns små förväntade effekter kan en verklig men liten regression
+   missas (samma ärlighetsprincip som GHI-noteringen i phase2.md §9).
+   Historik: 400 (steg 2) → 150 (före steg 4) → 100 (före Block C).
+6. **LTC-regressionsgrind efter varje block: 150 partier (historik: 1 000
+   ursprungligen → 200 under Block A → 150 före Block C).** 150 partier
+   (75 par, `-games 2 -repeat`) vid **30+0.3**, ny master mot blockets
+   startversion. Passkriteriet är i sak oförändrat: ingen statistiskt
    säkerställd regression (95 %-intervallet för Elo-differensen täcker 0
-   eller ligger helt över). Motivering: Block A:s löpande LTC visade att
-   riktningen avgörs långt före 1 000 partier — 140 poolade partier gav
-   Elo +118.6 med 95 %-KI [+66.1, +176.9], helt över noll med bred
-   marginal; ytterligare partier smalnar bara ett intervall som redan
-   besvarat grindens fråga. Samma tidsbudget-mot-rigor-avvägning och
-   redovisningsplikt som §3 beslut 5b. Skyddar fortsatt mot
-   STC-överanpassning — särskilt relevant för Roj.
+   eller ligger helt över). Motivering för 1 000 → 200: Block A:s löpande
+   LTC visade att riktningen avgörs långt före 1 000 partier (140 poolade
+   partier gav Elo +118.6, KI [+66.1, +176.9]). Motivering för 200 → 150:
+   Block A:s och Block B:s 200-partiersgrindar gav KI helt över noll med
+   massiv marginal ([+111, +206] resp. [+234, +362]) — inga gränsfall.
+   **Ej retroaktivt:** Block A:s och B:s redan körda 200-partiersresultat
+   står oförändrade; 150 gäller Block C:s och D:s kommande grindar.
+   **Ärlig styrkevarning:** 150 partier vid LTC ger breda intervall
+   (~±75 Elo); en liten verklig regression kan passera — accepterat
+   tidsbudget-val, samma redovisningsplikt som beslut 5b. Skyddar fortsatt
+   mot STC-överanpassning — särskilt relevant för Roj.
 7. **Parkeringspolicy (bindande):** misslyckas en SPRT tillåts **ett (1)**
    dokumenterat omtuningsförsök (parameterändringen skrivs ned *innan* den nya
    SPRT:n startar). Misslyckas även det parkeras tekniken med skriftlig
@@ -254,7 +264,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 | 6 | SEE-funktionen + orakel | — (ingen SPRT) | Egen SEE (iterativ swap-algoritm över egna attackuppslag, inkl. x-ray genom glidare; kung deltar sist; promotion/EP-hantering definierad; pinnade pjäser ignoreras — dokumenterad accepterad imperfektion); **brute-force-oraklet** (spela upp bytessekvensen med make/unmake, minimax:a materialutfallet) ger identiskt värde över hela den konstruerade testsviten + slumpade ställningar; deterministisk grind grön i CI. |
 | 7 | SEE i quiescence | SEEQPrune | Slag med SEE < 0 beskärs i qsearch (utom i schack); delta pruning-samspelet definierat och dokumenterat; taktiksviten (sanity-mätaren) ingen kollaps; SPRT **PASS [0, 10]**; toggle borttagen. |
 | 8 | SEE i dragordning | SEEOrder | Slag delas i vinnande/jämna (före killers) och förlorande (efter tysta drag) ovanpå MVV-LVA; identisk bästa score vid fast djup med/utan (ordning är sökneutral på fast djup — detta steg har alltså även en determinism-kontroll); SPRT **PASS [0, 5]**; toggle borttagen. |
-| — | **LTC-regression block C** | | 200 partier 30+0.3, ny master mot block B-mastern: ingen säkerställd regression. |
+| — | **LTC-regression block C** | | 150 partier 30+0.3, ny master mot block B-mastern: ingen säkerställd regression. |
 
 ### Block D — Marginalbeskärarna
 
@@ -269,7 +279,7 @@ Marginalerna är teknisk skuld mot Fas 4/5 (§3 beslut 10).
 | 10 | Futility pruning | Futility | Vid lågt djup: tysta drag hoppas när static eval + marginal(djup) ≤ alpha; aldrig TT-drag/killers vid tveksamhet — exakt dragmängd dokumenteras; SPRT **PASS [0, 5]**; toggle borttagen. |
 | 11 | Late move pruning | LMP | Tysta drag bortom tröskel(djup) hoppas vid lågt djup; tröskeltabell egen; SPRT **PASS [0, 3]**; toggle borttagen. |
 | 12 | Razoring | Razor | Vid mycket lågt djup och static eval långt under alpha: fall ned i qsearch (med eller utan verifikation — varianten låses i stegprompten); SPRT **PASS [0, 3]**; toggle borttagen. |
-| — | **LTC-regression block D** | | 200 partier 30+0.3, ny master mot block C-mastern: ingen säkerställd regression. |
+| — | **LTC-regression block D** | | 150 partier 30+0.3, ny master mot block C-mastern: ingen säkerställd regression. |
 
 ### Block E — Villkorat
 
@@ -305,8 +315,8 @@ från flera körningar poolas.
 | Nivå | Tekniker | Metod | Kriterium |
 |------|----------|-------|-----------|
 | Stor vinnare | PVS, NMP, LMR, SEE-qsearch | Sekventiell SPRT [0, 10], `alpha=0.05 beta=0.05` | LLR når ±2.94 — körs till beslut, ingen förtida avläsning |
-| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 150 partier + 95 % CI (steg 2–3 kördes med 400 innan sänkningen) | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
-| Finjustering | LMP, razoring, singular extensions | Fast 150 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 100 partier + 95 % CI (steg 2–3 kördes med 400; historik 400→150→100) | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Finjustering | LMP, razoring, singular extensions | Fast 100 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
 
 **Mallkommando — sekventiell nivå (finslipas per steg i stegprompten):**
 
@@ -322,7 +332,7 @@ fastchess \
   -pgnout out/roj_<teknik>.pgn
 ```
 
-**Mallkommando — fast-antal-nivå (150 partier, ingen `-sprt`):**
+**Mallkommando — fast-antal-nivå (100 partier, ingen `-sprt`):**
 
 ```
 fastchess \
@@ -330,22 +340,22 @@ fastchess \
   -engine cmd=./Roj name=Roj_off option.Hash=16 option.<Toggle>=false \
   -each proto=uci tc=10+0.1 option.Threads=1 \
   -openings file=8moves_v3.pgn format=pgn order=random \
-  -rounds 75 -games 2 -repeat -recover -srand 42 \
+  -rounds 50 -games 2 -repeat -recover -srand 42 \
   -concurrency 6 -report penta=true \
   -pgnout out/roj_<teknik>.pgn
 ```
 
 **LTC-regression (per block):** samma upplägg utan `-sprt`, `tc=30+0.3`,
-`-rounds 100 -games 2` (= 200 partier, §3 beslut 6 som ändrat), ny master
-mot blockets startversion.
+`-rounds 75 -games 2` (= 150 partier från Block C, §3 beslut 6 som ändrat;
+Block A–B kördes med 200), ny master mot blockets startversion.
 Pass: 95 %-intervallet för Elo-differensen täcker 0 eller ligger helt över.
 Fail: stopp — utredning och åtgärd innan nästa block påbörjas.
 
 **Statistisk hygien:** en mätning i taget på maskinen. Sekventiell nivå:
 SPRT:n körs till sitt beslut (ingen förtida avläsning som beslutsgrund);
 H0 förkastad = PASS, H1 förkastad = FAIL ⇒ parkeringspolicyn (§3 beslut 7).
-Fast-antal-nivå: kriteriet avläses först vid det fasta partiantalet (150
-från och med steg 4); ett stoppat delresultat får aldrig användas som
+Fast-antal-nivå: kriteriet avläses först vid det fasta partiantalet (100
+från och med Block C); ett stoppat delresultat får aldrig användas som
 beslut. Partier från en avbruten körning med identisk konfiguration får
 poolas till det fasta antalet (fast-N är inte sekventiellt), med varierat
 seed för tilläggsbatchen.
@@ -446,9 +456,9 @@ Vi är klara — och får först då röra Fas 4 — när **samtliga** är sanna
 
 - [ ] **Alla icke-parkerade steg SPRT-avsignerade** till beslut vid 10+0.1,
       noll time-losses, med dokumenterade LLR-utfall.
-- [ ] **Alla fyra LTC-regressionsgrindarna passerade** (block A–D; 200
-      partier 30+0.3 vardera per §3 beslut 6 som ändrat, ingen säkerställd
-      regression).
+- [ ] **Alla fyra LTC-regressionsgrindarna passerade** (30+0.3, ingen
+      säkerställd regression; block A–B med 200 partier vardera, block C–D
+      med 150 vardera per §3 beslut 6 som ändrat).
 - [ ] **Parkerade tekniker (om några) dokumenterade i §9** med utfall och
       motivering; singular extensions-beslutet dokumenterat.
 - [ ] **SEE-oraklet grönt** över hela testsviten, deterministiskt, i CI.
