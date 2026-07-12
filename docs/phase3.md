@@ -410,6 +410,17 @@ detaljerna där verkliga buggar bor.
 - **Toggle-hygien.** Av-läget måste återge föregående beteende **exakt**
   (verifieras med bench-signatur: toggle-AV ⇒ gamla signaturen). Annars mäter
   SPRT:n fel sak.
+- **Interna testlagringsflaggor för osunda tekniker (mönster etablerat i
+  Steg 4, godkänt av arkitekten):** tekniker som PVS eller check extension
+  kan spegla sitt av-läge i minimax-oraklet (värde-exakt resp. oraklet
+  tillämpar samma regel). NMP, LMR och liknande avsiktligt osunda
+  beskärningar kan det inte — det finns inget meningsfullt orakel-av-läge
+  att jämföra mot. För dessa behålls en intern SearchInfo/build-flagga
+  (t.ex. use_nullmove, default false i testkontext) EFTER att UCI-optionen
+  och spelvägens villkorsgren är helt borttagna vid av-signering. Detta är
+  en testinfrastrukturflagga, inte en kvarlämnad produktionsflagga —
+  spelvägen är redan ovillkorlig. Samma mönster gäller för Steg 5 (LMR)
+  och andra osunda tekniker i denna fas.
 
 ---
 
