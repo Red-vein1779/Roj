@@ -18,18 +18,17 @@ namespace roj {
 namespace {
 
 // Fixed parameters. Changing any of these changes the signature, so they are pinned
-// here and never derived from UCI options or the environment. Depth 6 in the `go`
-// play configuration (Phase 3 Step 1: PVS, TT value cutoffs at non-PV nodes) runs
-// the suite in ~2 s. The depth raise is DEFERRED to after Block B's LTC regression
-// (phase3.md §3 decision 3 as amended): PVS alone cuts nodes, but the effective
-// branching factor is set by the Block B pruners, so deeper bench is not yet cheap.
-constexpr int BENCH_DEPTH   = 6;    // fixed search depth per position
+// here and never derived from UCI options or the environment. Depth RAISED 6 -> 7
+// after Block B's LTC regression passed, per phase3.md §3 decision 3 as amended:
+// with NMP + LMR unconditional the suite runs in ~1.5 s at depth 7 on the
+// reference machine (depth 8 was ~3.1 s — outside the ~1-2 s target).
+constexpr int BENCH_DEPTH   = 7;    // fixed search depth per position
 constexpr int BENCH_HASH_MB = 16;   // fixed TT size (independent of the `Hash` option)
 
 // REFERENCE SIGNATURE (commit this, Stockfish-style): with the positions, depth, TT
 // size and search configuration below, run_bench() returns exactly:
 //
-//     Nodes searched: 1617309
+//     Nodes searched: 3385689
 //
 // This number is deterministic across runs, rebuilds and platforms (fixed depth,
 // fixed positions, integer-only search, TT cluster count derived from a fixed byte

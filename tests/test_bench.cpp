@@ -32,8 +32,9 @@ using namespace roj;
 // Phase 3 Step 3: check extension — in-check nodes searched one ply deeper
 // changes the fixed-nominal-depth node count (+31.8%, 6254236).
 // Phase 3 Step 4: null move pruning on the play path (-45.0%, 3437418).
-// Phase 3 Step 5: LMR on the play path (-52.9%).
-static constexpr std::uint64_t BENCH_REFERENCE = 1617309ULL;
+// Phase 3 Step 5: LMR on the play path (-52.9%, 1617309 at depth 6).
+// Post-Block-B re-baseline (phase3.md §3.3 as amended): depth raised 6 -> 7.
+static constexpr std::uint64_t BENCH_REFERENCE = 3385689ULL;
 
 int main() {
     init_attack_tables();
