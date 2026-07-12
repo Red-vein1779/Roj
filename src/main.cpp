@@ -32,9 +32,6 @@ void uci_identify() {
               // Step 11: a test knob for A/B SPRT (default true = no behaviour change).
               // Lets the harness run "quiescence on vs off" as one binary, two options.
               << "option name Qsearch type check default true\n"
-              // Phase 3 Step 5: TEMPORARY SPRT A/B toggle (phase3.md §3 decision 4).
-              // Removed in the sign-off commit once the LMR SPRT reaches a decision.
-              << "option name LMR type check default true\n"
               << "uciok" << std::endl;
 }
 
@@ -121,7 +118,7 @@ void uci_position(Position& pos, std::istringstream& iss, std::vector<std::uint6
 // (fixed depth 6): a single-threaded engine cannot receive `stop` mid-search, so a
 // truly unbounded search is deferred to the async input of a later phase.
 void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
-            const std::vector<std::uint64_t>& gameKeys, bool optQsearch, bool optLMR) {
+            const std::vector<std::uint64_t>& gameKeys, bool optQsearch) {
     long long wtime = -1, btime = -1, winc = 0, binc = 0, movetime = -1, nodes = -1;
     int movestogo = 0, depth = -1;
     bool infinite = false;
@@ -143,7 +140,7 @@ void uci_go(Position& pos, TranspositionTable& tt, std::istringstream& iss,
     info.use_killers_history = true;
     info.use_qsearch = optQsearch;   // Step 11: A/B knob (UCI option `Qsearch`)
     info.use_nullmove = true;        // Step 4 sign-off: NMP unconditional on the play path
-    info.use_lmr = optLMR;           // Phase 3 Step 5: A/B knob (UCI option `LMR`)
+    info.use_lmr = true;             // Step 5 sign-off: LMR unconditional on the play path
     info.use_delta_pruning = true;
     info.tt = &tt;
     PvTable pv;
@@ -224,7 +221,6 @@ void uci_loop() {
     tt.resize(16);   // default Hash size (Step 6); real search through `go` is Step 7
 
     bool optQsearch = true;   // Step 11: `Qsearch` UCI option (default = normal search)
-    bool optLMR     = true;   // Phase 3 Step 5: `LMR` UCI option (temporary SPRT toggle)
 
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -251,13 +247,11 @@ void uci_loop() {
                 } catch (...) { /* ignore malformed value */ }
             } else if (name == "Qsearch") {
                 optQsearch = (value == "true" || value == "1");
-            } else if (name == "LMR") {
-                optLMR = (value == "true" || value == "1");
             }
         } else if (token == "position") {
             uci_position(pos, iss, gameKeys);
         } else if (token == "go") {
-            uci_go(pos, tt, iss, gameKeys, optQsearch, optLMR);
+            uci_go(pos, tt, iss, gameKeys, optQsearch);
         } else if (token == "bench") {
             // Step 10: deterministic node signature (fixed positions/depth/TT).
             run_bench(/*verbose=*/true);

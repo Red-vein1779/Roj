@@ -85,7 +85,7 @@ std::uint64_t run_bench(bool verbose) {
         info.use_delta_pruning = true;
         info.use_draw_detection = true;
         info.use_nullmove = true;        // Step 4 sign-off: NMP unconditional on the play path
-        info.use_lmr = true;             // Phase 3 Step 5: the play path reduces late moves
+        info.use_lmr = true;             // Step 5 sign-off: LMR unconditional on the play path
         info.tt = &tt;
         info.pv = &pv;
 

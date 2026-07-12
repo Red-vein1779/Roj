@@ -90,14 +90,16 @@ struct SearchInfo {
     // clipped to beta first — phase3.md §8).
     bool use_nullmove = false;
 
-    // Phase 3 Step 5: late move reductions (temporary UCI toggle "LMR"; the
-    // UCI option goes at sign-off, this flag stays as an internal test-scoping
-    // flag per the §8 pattern — LMR, like NMP, is deliberately unsound and has
-    // no meaningful oracle off-mode). ON: late (4th+), quiet, non-TT,
-    // non-killer, non-checking moves at calm nodes are probed at a reduced
-    // depth from our own startup-generated log table; fail-highs climb the
-    // §8 re-search cascade (reduced null-window -> full-depth null-window ->
-    // full window). OFF: exactly the Step 4 search.
+    // Phase 3 Step 5: late move reductions — SPRT-signed-off and unconditional
+    // on the play path (`go` and bench set this true; the UCI toggle is
+    // removed). Kept as an INTERNAL test-scoping flag (default false) per the
+    // §8 pattern established in Step 4: LMR, like NMP, is deliberately unsound
+    // pruning with no meaningful oracle off-mode, so the oracle/regression
+    // tests exercise the sound core with this off. ON: late (4th+), quiet,
+    // non-TT, non-killer, non-checking moves at calm nodes are probed at a
+    // reduced depth from our own startup-generated log table; fail-highs climb
+    // the §8 cascade (reduced null-window -> full-depth null-window -> full
+    // window).
     bool use_lmr = false;
 
     // Ply at which the search most recently made a null move on the CURRENT
