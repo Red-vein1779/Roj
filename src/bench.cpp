@@ -28,7 +28,7 @@ constexpr int BENCH_HASH_MB = 16;   // fixed TT size (independent of the `Hash` 
 // REFERENCE SIGNATURE (commit this, Stockfish-style): with the positions, depth, TT
 // size and search configuration below, run_bench() returns exactly:
 //
-//     Nodes searched: 3385689
+//     Nodes searched: 2911321
 //
 // This number is deterministic across runs, rebuilds and platforms (fixed depth,
 // fixed positions, integer-only search, TT cluster count derived from a fixed byte
@@ -85,6 +85,7 @@ std::uint64_t run_bench(bool verbose) {
         info.use_draw_detection = true;
         info.use_nullmove = true;        // Step 4 sign-off: NMP unconditional on the play path
         info.use_lmr = true;             // Step 5 sign-off: LMR unconditional on the play path
+        info.use_seeq_prune = true;      // Phase 3 Step 7: the play path SEE-prunes qsearch
         info.tt = &tt;
         info.pv = &pv;
 

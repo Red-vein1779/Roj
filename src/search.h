@@ -102,6 +102,15 @@ struct SearchInfo {
     // window).
     bool use_lmr = false;
 
+    // Phase 3 Step 7: SEE pruning in quiescence (temporary UCI toggle
+    // "SEEQPrune"; the UCI option goes at sign-off, this flag stays as an
+    // internal test-scoping flag per the §8 pattern — discarding captures on a
+    // heuristic material judgment is unsound, same category as NMP/LMR). ON:
+    // at NON-check qsearch nodes a capture with see() < 0 is skipped without
+    // being searched; in check every evasion is searched (phase2.md §9). OFF:
+    // exactly the Block B search (SEE exists but is never called).
+    bool use_seeq_prune = false;
+
     // Ply at which the search most recently made a null move on the CURRENT
     // path (set before the null-search recursion, restored after). A node at
     // last_null_ply + 1 is the null move's direct child and may not null again
