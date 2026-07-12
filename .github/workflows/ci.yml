@@ -9,6 +9,10 @@
 # Job 3 (Phase 3 Step 1): the ASan+UBSan ENGINE debug target (phase2.md §12)
 #        runs a fixed-depth search workload, so the DoD item "sanitizer-clean
 #        search with all Phase 3 techniques active" is checked on every push.
+# Job 4 (Phase 3 Step 6): the SEE brute-force-oracle gate (phase3.md §2.2 —
+#        "deterministisk grind grön i CI"), built WITH ASan+UBSan so the gate
+#        doubles as the SEE sanitizer check. Its own job because no regression-
+#        suite job exists in CI (the full suite runs locally per step).
 name: CI
 
 on: [push]
@@ -64,3 +68,21 @@ jobs:
         run: |
           printf 'uci\nposition startpos\ngo depth 7\nposition fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1\ngo depth 6\nposition fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1\ngo depth 8\nposition fen q5k1/5ppp/8/8/8/8/5PPP/Q5K1 w - - 0 1\ngo depth 8\nposition fen 8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - - 0 1\ngo depth 10\nquit\n' | ./Roj_debug | tee search_out.txt
           test "$(grep -c '^bestmove ' search_out.txt)" -eq 5
+
+  see-oracle:
+    name: SEE oracle gate (ASan+UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compiler version
+        run: g++ --version
+      - name: Build SEE oracle suite (sanitized)
+        run: >
+          g++ -O1 -g -std=c++17 -fsanitize=address,undefined
+          -fno-sanitize-recover=all -fno-omit-frame-pointer
+          tests/test_see.cpp
+          src/see.cpp src/position.cpp src/fen.cpp src/movegen.cpp
+          src/attacks.cpp src/magic.cpp src/zobrist.cpp src/bitboard.cpp
+          -o test_see
+      - name: Run SEE vs brute-force oracle (deterministic gate)
+        run: ./test_see
