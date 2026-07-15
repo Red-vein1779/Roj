@@ -34,8 +34,9 @@ using namespace roj;
 // Phase 3 Step 4: null move pruning on the play path (-45.0%, 3437418).
 // Phase 3 Step 5: LMR on the play path (-52.9%, 1617309 at depth 6).
 // Post-Block-B re-baseline (phase3.md §3.3 as amended): depth raised 6 -> 7
-// (3385689). Phase 3 Step 7: SEE pruning in quiescence (-14.0%).
-static constexpr std::uint64_t BENCH_REFERENCE = 2911321ULL;
+// (3385689). Phase 3 Step 7: SEE pruning in quiescence (-14.0%, 2911321 at
+// the base see<0 variant; 2890141 after the documented -100 retune).
+static constexpr std::uint64_t BENCH_REFERENCE = 2890141ULL;
 
 int main() {
     init_attack_tables();

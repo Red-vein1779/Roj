@@ -274,7 +274,11 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
         // captures that lose material after the full exchange regardless of
         // alpha. OFF entirely when in check — every evasion (including losing
         // captures) is searched, phase2.md §9's locked rule.
-        if (!inCheck && info.use_seeq_prune && is_capture(pos, m) && see(pos, m) < 0)
+        // Threshold -100 (the documented §3.7 retune after the base see<0
+        // variant FAILED its fixed-N gate): equal and near-equal exchanges are
+        // kept; only clearly losing captures — a full pawn or worse down after
+        // the exchange — are pruned.
+        if (!inCheck && info.use_seeq_prune && is_capture(pos, m) && see(pos, m) < -100)
             continue;
 
         make_move(pos, m);
