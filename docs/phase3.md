@@ -262,7 +262,7 @@ commit-instruktion, och Claude Code redovisar `git log --oneline` +
 | # | Steg | Teknik | Klart när |
 |---|------|--------|-----------|
 | 6 | SEE-funktionen + orakel | — (ingen SPRT) | Egen SEE (iterativ swap-algoritm över egna attackuppslag, inkl. x-ray genom glidare; kung deltar sist; promotion/EP-hantering definierad; pinnade pjäser ignoreras — dokumenterad accepterad imperfektion); **brute-force-oraklet** (spela upp bytessekvensen med make/unmake, minimax:a materialutfallet) ger identiskt värde över hela den konstruerade testsviten + slumpade ställningar; deterministisk grind grön i CI. |
-| 7 | SEE i quiescence | SEEQPrune | Slag med SEE < 0 beskärs i qsearch (utom i schack); delta pruning-samspelet definierat och dokumenterat; taktiksviten (sanity-mätaren) ingen kollaps; SPRT **PASS [0, 10]**; toggle borttagen. |
+| 7 | SEE i quiescence | SEEQPrune | Förlorande slag beskärs i qsearch (utom i schack); delta pruning-samspelet definierat och dokumenterat; taktiksviten (sanity-mätaren) ingen kollaps; **fast 100 partier + 95 % CI, undre gräns > 0** (omklassad från [0,10] efter SPRT-fyndet, se §7); toggle borttagen. |
 | 8 | SEE i dragordning | SEEOrder | Slag delas i vinnande/jämna (före killers) och förlorande (efter tysta drag) ovanpå MVV-LVA; identisk bästa score vid fast djup med/utan (ordning är sökneutral på fast djup — detta steg har alltså även en determinism-kontroll); SPRT **PASS [0, 5]**; toggle borttagen. |
 | — | **LTC-regression block C** | | 150 partier 30+0.3, ny master mot block B-mastern: ingen säkerställd regression. |
 
@@ -314,8 +314,8 @@ från flera körningar poolas.
 
 | Nivå | Tekniker | Metod | Kriterium |
 |------|----------|-------|-----------|
-| Stor vinnare | PVS, NMP, LMR, SEE-qsearch | Sekventiell SPRT [0, 10], `alpha=0.05 beta=0.05` | LLR når ±2.94 — körs till beslut, ingen förtida avläsning |
-| Medel | Aspiration, check extension, SEE-ordning, RFP, futility | Fast 100 partier + 95 % CI (steg 2–3 kördes med 400; historik 400→150→100) | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
+| Stor vinnare | PVS, NMP, LMR | Sekventiell SPRT [0, 10], `alpha=0.05 beta=0.05` | LLR når ±2.94 — körs till beslut, ingen förtida avläsning |
+| Medel | Aspiration, check extension, SEE-qsearch (omklassad efter Steg 7:s SPRT-fynd — uppmätt effekt ~+10 Elo med CI som spänner noll efter 651 partier; sekventiell [0,10] är per konstruktion långsam exakt vid effekt ≈ elo1), SEE-ordning, RFP, futility | Fast 100 partier + 95 % CI (steg 2–3 kördes med 400; historik 400→150→100) | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
 | Finjustering | LMP, razoring, singular extensions | Fast 100 partier + 95 % CI | Undre CI-gräns > 0 = PASS; spänner 0 eller under = FAIL |
 
 **Mallkommando — sekventiell nivå (finslipas per steg i stegprompten):**
@@ -445,6 +445,9 @@ detaljerna där verkliga buggar bor.
 - **Singular extensions:** villkorad — utfall dokumenteras här vid steg 13.
 - **Parkerade tekniker:** *(fylls i löpande — teknik, SPRT-utfall,
   omtuningsförsökets parameter, motivering för parkering.)*
+  - *Steg 7 (SEE-qsearch-beskärning): [stub — förs in efter §3.7-
+    omtuningsförsöket: basvariant see<0 FAIL (651 partier, Elo +9.77,
+    KI spänner noll); omtuningsparameter see<-100; utfall TBD.]*
 - **Block D-marginalerna:** om-tunas efter Fas 4/5-evalbytet (teknisk skuld,
   §3 beslut 10).
 
