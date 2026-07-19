@@ -62,9 +62,14 @@ constexpr int CAPTURE_BONUS  = 1 << 20;
 constexpr int KILLER_0_SCORE = 1 << 19;
 constexpr int KILLER_1_SCORE = 1 << 18;
 constexpr int HISTORY_MAX    = 1 << 16;
-// Phase 3 Step 8: losing captures (see() < 0) sort BELOW every quiet move
-// (history scores are >= 0), MVV-LVA among themselves.
-constexpr int LOSING_CAPTURE_BASE = -(1 << 20);
+// Phase 3 Step 8 (§3.7 documented retune, architect-approved): losing captures
+// (see() < 0) sort BETWEEN the killers and the history-ordered quiets — soft
+// demotion. The base variant (below every quiet) FAILED its fixed-N gate; the
+// identified mechanism was LMR's move-index interaction (weak quiets promoted
+// to unreduced early indices, losing captures pushed to max-reduction ones).
+// Band: KILLER_1 (1<<18) > LOSING_CAPTURE_BASE + MVV-LVA (1<<17 .. 1<<17+96)
+// > history (0 .. 1<<16).
+constexpr int LOSING_CAPTURE_BASE = 1 << 17;
 
 int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info, Move ttMove) {
     if (ttMove != MOVE_NONE && m == ttMove)

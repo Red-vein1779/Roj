@@ -28,7 +28,7 @@ constexpr int BENCH_HASH_MB = 16;   // fixed TT size (independent of the `Hash` 
 // REFERENCE SIGNATURE (commit this, Stockfish-style): with the positions, depth, TT
 // size and search configuration below, run_bench() returns exactly:
 //
-//     Nodes searched: 3403889
+//     Nodes searched: 3184757
 //
 // This number is deterministic across runs, rebuilds and platforms (fixed depth,
 // fixed positions, integer-only search, TT cluster count derived from a fixed byte

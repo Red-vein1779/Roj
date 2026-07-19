@@ -37,8 +37,9 @@ using namespace roj;
 // (Step 7 SEE-qsearch pruning was measured at 2911321 / 2890141 and PARKED —
 // phase3.md §9; the signature returns to the Block B baseline.)
 // Phase 3 Step 8: SEE capture ordering on the play path (+0.5% — LMR/order
-// interplay at fixed depth; Elo measured by the fixed-N gate).
-static constexpr std::uint64_t BENCH_REFERENCE = 3403889ULL;
+// interplay at fixed depth; 3403889 at the base variant). §3.7 retune (soft
+// demotion, losing captures between killers and quiets): -5.9%.
+static constexpr std::uint64_t BENCH_REFERENCE = 3184757ULL;
 
 int main() {
     init_attack_tables();
