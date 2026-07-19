@@ -1,6 +1,7 @@
 // Roj chess engine — Phase 2: search core (search.h).
 
 #include "search.h"
+#include "see.h"
 #include "eval.h"
 #include "movegen.h"
 #include "bitboard.h"
@@ -61,13 +62,23 @@ constexpr int CAPTURE_BONUS  = 1 << 20;
 constexpr int KILLER_0_SCORE = 1 << 19;
 constexpr int KILLER_1_SCORE = 1 << 18;
 constexpr int HISTORY_MAX    = 1 << 16;
+// Phase 3 Step 8: losing captures (see() < 0) sort BELOW every quiet move
+// (history scores are >= 0), MVV-LVA among themselves.
+constexpr int LOSING_CAPTURE_BASE = -(1 << 20);
 
 int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info, Move ttMove) {
     if (ttMove != MOVE_NONE && m == ttMove)
         return TT_MOVE_SCORE;
     if (info.use_mvv_lva) {
         const int cap = capture_score(pos, m);
-        if (cap > 0) return CAPTURE_BONUS + cap;
+        // Phase 3 Step 8 (SEEOrder): winning/equal captures keep their place
+        // above killers; LOSING captures drop below every quiet. MVV-LVA ranks
+        // within both bands. Exactly one see() call per capture per node —
+        // move_order_score runs once per move in order_search_moves.
+        if (cap > 0)
+            return (info.use_see_order && see(pos, m) < 0)
+                     ? LOSING_CAPTURE_BASE + cap
+                     : CAPTURE_BONUS + cap;
     }
     if (info.use_killers_history) {
         if (ply < MAX_PLY) {
@@ -79,13 +90,25 @@ int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& inf
     return 0;
 }
 
+// Scores are precomputed ONCE per move (see() in particular must not run per
+// comparison), then the (score, move) pairs are stable-sorted — the same
+// permutation the old score-in-comparator version produced, since the
+// comparator was a pure function of the same per-move scores. qsearch is NOT
+// SEE-ordered (order_moves below stays pure MVV-LVA): with Step 7 parked it
+// still searches every capture, its subtrees are the shallowest, and an extra
+// see() per capture in the hottest loop is exactly the cost profile that
+// failed to pay for itself in Step 7.
 void order_search_moves(const Position& pos, MoveList& ml, int ply, const SearchInfo& info, Move ttMove) {
     if (ttMove == MOVE_NONE && !info.use_mvv_lva && !info.use_killers_history)
         return;
-    std::stable_sort(ml.moves, ml.moves + ml.count,
-        [&](Move a, Move b) {
-            return move_order_score(pos, a, ply, info, ttMove) > move_order_score(pos, b, ply, info, ttMove);
-        });
+    struct Scored { int s; Move m; };
+    Scored scored[256];
+    for (int i = 0; i < ml.count; ++i)
+        scored[i] = { move_order_score(pos, ml.moves[i], ply, info, ttMove), ml.moves[i] };
+    std::stable_sort(scored, scored + ml.count,
+                     [](const Scored& a, const Scored& b) { return a.s > b.s; });
+    for (int i = 0; i < ml.count; ++i)
+        ml.moves[i] = scored[i].m;
 }
 
 void clear_killers_history(SearchInfo& info) {

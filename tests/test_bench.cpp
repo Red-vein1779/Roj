@@ -36,7 +36,9 @@ using namespace roj;
 // Post-Block-B re-baseline (phase3.md §3.3 as amended): depth raised 6 -> 7.
 // (Step 7 SEE-qsearch pruning was measured at 2911321 / 2890141 and PARKED —
 // phase3.md §9; the signature returns to the Block B baseline.)
-static constexpr std::uint64_t BENCH_REFERENCE = 3385689ULL;
+// Phase 3 Step 8: SEE capture ordering on the play path (+0.5% — LMR/order
+// interplay at fixed depth; Elo measured by the fixed-N gate).
+static constexpr std::uint64_t BENCH_REFERENCE = 3403889ULL;
 
 int main() {
     init_attack_tables();
