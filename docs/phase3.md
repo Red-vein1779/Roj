@@ -445,9 +445,17 @@ detaljerna där verkliga buggar bor.
 - **Singular extensions:** villkorad — utfall dokumenteras här vid steg 13.
 - **Parkerade tekniker:** *(fylls i löpande — teknik, SPRT-utfall,
   omtuningsförsökets parameter, motivering för parkering.)*
-  - *Steg 7 (SEE-qsearch-beskärning): [stub — förs in efter §3.7-
-    omtuningsförsöket: basvariant see<0 FAIL (651 partier, Elo +9.77,
-    KI spänner noll); omtuningsparameter see<-100; utfall TBD.]*
+  - **Steg 7 (SEE-qsearch-beskärning): PARKERAD.** Basvariant `see < 0`:
+    FAIL — 651 partier (avbruten sekventiell körning, adjudicerad under det
+    omklassade fast-N-kriteriet), Elo +9.77 ± 24.35, 95 %-KI [−14.6, +34.1]
+    spänner noll, noll tidsförluster. Omtuningsförsök (§3.7, parametern
+    nedskriven i förväg): `see < −100` (behåll jämna/nära-jämna byten):
+    FAIL — 100 partier (srand 43), W39-L39-D22, Elo ±0.00 ± 56.65, KI
+    spänner noll, noll tidsförluster. Motivering: Fas 2:s delta pruning
+    fångar redan större delen av vinsten; SEE-beskärningens marginella
+    värde i qsearch är för litet för att säkerställas. Kodvägen borttagen;
+    **SEE-funktionen (steg 6) kvarstår orörd** — steg 8 (dragordning)
+    använder den. Kan omprövas efter Fas 4/5:s evalbyte.
 - **Block D-marginalerna:** om-tunas efter Fas 4/5-evalbytet (teknisk skuld,
   §3 beslut 10).
 

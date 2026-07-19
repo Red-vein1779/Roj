@@ -1,7 +1,6 @@
 // Roj chess engine — Phase 2: search core (search.h).
 
 #include "search.h"
-#include "see.h"
 #include "eval.h"
 #include "movegen.h"
 #include "bitboard.h"
@@ -265,21 +264,11 @@ int qsearch(Position& pos, int alpha, int beta, int ply, SearchInfo& info) {
                 continue;
         }
 
-        // Phase 3 Step 7: SEE pruning — deliberately ordered AFTER delta
-        // pruning: delta is a single O(1) compare against an already-known
-        // victim value while see() costs an attack-set scan, so the cheap
-        // filter rejects first and SEE only runs on survivors. The two are
-        // complementary, never redundant: delta catches SEE-nonnegative
-        // captures that still cannot reach a distant alpha; SEE catches
-        // captures that lose material after the full exchange regardless of
-        // alpha. OFF entirely when in check — every evasion (including losing
-        // captures) is searched, phase2.md §9's locked rule.
-        // Threshold -100 (the documented §3.7 retune after the base see<0
-        // variant FAILED its fixed-N gate): equal and near-equal exchanges are
-        // kept; only clearly losing captures — a full pawn or worse down after
-        // the exchange — are pruned.
-        if (!inCheck && info.use_seeq_prune && is_capture(pos, m) && see(pos, m) < -100)
-            continue;
+        // Phase 3 Step 7 PARKED (phase3.md §9): SEE-based qsearch pruning was
+        // measured here in two variants (see < 0 and see < -100) and neither
+        // cleared the fixed-N gate — delta pruning above already captures most
+        // of the gain. The SEE function itself (Step 6) is unaffected and is
+        // used by Step 8's move ordering.
 
         make_move(pos, m);
         const int score = -qsearch(pos, -beta, -alpha, ply + 1, info);
