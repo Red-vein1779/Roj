@@ -102,16 +102,6 @@ struct SearchInfo {
     // window).
     bool use_lmr = false;
 
-    // Phase 3 Step 8: SEE-based capture ordering (temporary UCI toggle
-    // "SEEOrder"). ON: in the MAIN search's move ordering, captures with
-    // see() >= 0 (winning/equal) rank ABOVE killers, MVV-LVA among themselves;
-    // captures with see() < 0 (losing) rank BELOW all quiets, MVV-LVA among
-    // themselves; the TT move stays first unconditionally. qsearch keeps pure
-    // MVV-LVA (see order_search_moves rationale). OFF: exactly the
-    // post-Step-7-parking search. Ordering is search-neutral at fixed depth in
-    // the sound core (no TT, no LMR) — the Step 8 neutrality check.
-    bool use_see_order = false;
-
     // Ply at which the search most recently made a null move on the CURRENT
     // path (set before the null-search recursion, restored after). A node at
     // last_null_ply + 1 is the null move's direct child and may not null again

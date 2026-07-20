@@ -1,7 +1,6 @@
 // Roj chess engine — Phase 2: search core (search.h).
 
 #include "search.h"
-#include "see.h"
 #include "eval.h"
 #include "movegen.h"
 #include "bitboard.h"
@@ -62,28 +61,19 @@ constexpr int CAPTURE_BONUS  = 1 << 20;
 constexpr int KILLER_0_SCORE = 1 << 19;
 constexpr int KILLER_1_SCORE = 1 << 18;
 constexpr int HISTORY_MAX    = 1 << 16;
-// Phase 3 Step 8 (§3.7 documented retune, architect-approved): losing captures
-// (see() < 0) sort BETWEEN the killers and the history-ordered quiets — soft
-// demotion. The base variant (below every quiet) FAILED its fixed-N gate; the
-// identified mechanism was LMR's move-index interaction (weak quiets promoted
-// to unreduced early indices, losing captures pushed to max-reduction ones).
-// Band: KILLER_1 (1<<18) > LOSING_CAPTURE_BASE + MVV-LVA (1<<17 .. 1<<17+96)
-// > history (0 .. 1<<16).
-constexpr int LOSING_CAPTURE_BASE = 1 << 17;
+// Phase 3 Step 8 PARKED (phase3.md §9): SEE-based capture ordering was
+// measured in two variants (losing captures below all quiets, then between
+// killers and quiets) and neither cleared the fixed-N gate — the LMR
+// move-index interaction plus already-good MVV-LVA/killers/history ordering
+// left no measurable headroom. The SEE function (Step 6) stays in the
+// codebase, oracle-gated in CI.
 
 int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& info, Move ttMove) {
     if (ttMove != MOVE_NONE && m == ttMove)
         return TT_MOVE_SCORE;
     if (info.use_mvv_lva) {
         const int cap = capture_score(pos, m);
-        // Phase 3 Step 8 (SEEOrder): winning/equal captures keep their place
-        // above killers; LOSING captures drop below every quiet. MVV-LVA ranks
-        // within both bands. Exactly one see() call per capture per node —
-        // move_order_score runs once per move in order_search_moves.
-        if (cap > 0)
-            return (info.use_see_order && see(pos, m) < 0)
-                     ? LOSING_CAPTURE_BASE + cap
-                     : CAPTURE_BONUS + cap;
+        if (cap > 0) return CAPTURE_BONUS + cap;
     }
     if (info.use_killers_history) {
         if (ply < MAX_PLY) {
@@ -95,14 +85,10 @@ int move_order_score(const Position& pos, Move m, int ply, const SearchInfo& inf
     return 0;
 }
 
-// Scores are precomputed ONCE per move (see() in particular must not run per
-// comparison), then the (score, move) pairs are stable-sorted — the same
-// permutation the old score-in-comparator version produced, since the
-// comparator was a pure function of the same per-move scores. qsearch is NOT
-// SEE-ordered (order_moves below stays pure MVV-LVA): with Step 7 parked it
-// still searches every capture, its subtrees are the shallowest, and an extra
-// see() per capture in the hottest loop is exactly the cost profile that
-// failed to pay for itself in Step 7.
+// Scores are precomputed ONCE per move, then the (score, move) pairs are
+// stable-sorted — the same permutation the old score-in-comparator version
+// produced (the comparator was a pure function of the same per-move scores),
+// verified bit-identical via the bench signature at the Step 8 refactor.
 void order_search_moves(const Position& pos, MoveList& ml, int ply, const SearchInfo& info, Move ttMove) {
     if (ttMove == MOVE_NONE && !info.use_mvv_lva && !info.use_killers_history)
         return;

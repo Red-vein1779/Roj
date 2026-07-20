@@ -454,8 +454,23 @@ detaljerna där verkliga buggar bor.
     spänner noll, noll tidsförluster. Motivering: Fas 2:s delta pruning
     fångar redan större delen av vinsten; SEE-beskärningens marginella
     värde i qsearch är för litet för att säkerställas. Kodvägen borttagen;
-    **SEE-funktionen (steg 6) kvarstår orörd** — steg 8 (dragordning)
-    använder den. Kan omprövas efter Fas 4/5:s evalbyte.
+    **SEE-funktionen (steg 6) kvarstår orörd**. Kan omprövas efter Fas 4/5:s
+    evalbyte.
+  - **Steg 8 (SEE-dragordning): PARKERAD.** Basvariant (förlorande fångster
+    under alla tysta drag): FAIL — 100 partier (srand 44), W34-L38-D28,
+    Elo −13.90 ± 55.75, KI spänner noll. Omtuningsförsök (§3.7, godkänt och
+    nedskrivet i förväg): mjuk nedflyttning (förlorande fångster mellan
+    killers och tysta drag, `LOSING_CAPTURE_BASE = 1<<17`): FAIL —
+    100 partier (srand 45), W36-L37-D27, Elo −3.47 ± 57.07, KI spänner
+    noll. Noll tidsförluster i båda. Motivering: LMR:s indexberoende
+    reduktioner läser ordningen (nedflyttade fångster/upplyfta tysta drag
+    byter reduktionszon), och MVV-LVA + killers + history ordnar redan
+    tillräckligt väl — neutralitetsanalysen visade att ordningskoden i sig
+    var värderen (0/14 avvikelser i ren kärna, −16,7 % noder där), så
+    parkeringen är en effektfråga, inte en korrekthetsfråga. **Omprövas om
+    LMR:s reduktionsindexering ändras eller efter Fas 4/5:s evalbyte.**
+    SEE-funktionen (steg 6) kvarstår orörd i kodbasen, orakel-grindad i CI,
+    redo för framtida användningar.
 - **Block D-marginalerna:** om-tunas efter Fas 4/5-evalbytet (teknisk skuld,
   §3 beslut 10).
 
